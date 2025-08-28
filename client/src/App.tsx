@@ -34,6 +34,9 @@ function Router() {
 
   return (
     <Switch>
+      {/* Ruta accesible sin autenticación */}
+      <Route path="/test-users" component={TestUsers} />
+      
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
@@ -44,7 +47,6 @@ function Router() {
           <Route path="/dashboard/admin" component={AdminDashboard} />
           <Route path="/incidents" component={Incidents} />
           <Route path="/reports" component={Reports} />
-          <Route path="/test-users" component={TestUsers} />
         </>
       )}
       <Route component={NotFound} />

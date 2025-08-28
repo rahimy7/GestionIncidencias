@@ -347,7 +347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Ruta para obtener usuarios de prueba
+  // Ruta para obtener usuarios de prueba (sin autenticación para testing)
   app.get('/api/test-users', async (req, res) => {
     try {
       const testUsers = await storage.getTestUsers();
