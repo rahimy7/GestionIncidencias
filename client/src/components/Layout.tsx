@@ -40,16 +40,16 @@ export function Layout({ children }: LayoutProps) {
                 <div className="ml-10 flex items-baseline space-x-4">
                   {navigation.map((item) => (
                     <Link key={item.name} href={item.href}>
-                      <a
+                      <span
                         className={
                           item.current
-                            ? "bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium"
-                            : "text-muted-foreground hover:text-foreground px-3 py-2 rounded-md text-sm font-medium"
+                            ? "bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
+                            : "text-muted-foreground hover:text-foreground px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
                         }
                         data-testid={`link-nav-${item.name.toLowerCase()}`}
                       >
                         {item.name}
-                      </a>
+                      </span>
                     </Link>
                   ))}
                 </div>

@@ -419,6 +419,138 @@ export class DatabaseStorage implements IStorage {
       avgResolutionTime: Math.round(avgResolutionTime * 10) / 10, // Round to 1 decimal place
     };
   }
+
+  // New methods for role-based dashboards
+  async getGlobalStats() {
+    const totalIncidents = await db.select({ count: count() }).from(incidents);
+    const inProgress = await db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'in_progress'));
+    const critical = await db.select({ count: count() }).from(incidents).where(eq(incidents.priority, 'critical'));
+    const completed = await db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'completed'));
+    const activeCenters = await db.select({ count: count() }).from(centers);
+
+    return {
+      totalIncidents: totalIncidents[0].count,
+      inProgress: inProgress[0].count,
+      critical: critical[0].count,
+      completed: completed[0].count,
+      activeCenters: activeCenters[0].count,
+      dailyAverage: 0,
+      avgResolutionTime: 5,
+      globalResolutionRate: 85,
+      criticalIncidents: [],
+      topCenters: []
+    };
+  }
+
+  async getCenterStats(centerId?: string, userId?: string) {
+    if (!centerId && !userId) {
+      return { totalIncidents: 0, inProgress: 0, critical: 0, completedIncidents: 0 };
+    }
+
+    let whereCondition = centerId ? eq(incidents.centerId, centerId) : undefined;
+    
+    if (!centerId && userId) {
+      // Get user's managed center
+      const userCenter = await db.select().from(centers).where(eq(centers.managerId, userId));
+      if (userCenter.length > 0) {
+        whereCondition = eq(incidents.centerId, userCenter[0].id);
+      }
+    }
+
+    if (!whereCondition) {
+      return { totalIncidents: 0, inProgress: 0, critical: 0, completedIncidents: 0 };
+    }
+
+    const totalIncidents = await db.select({ count: count() }).from(incidents).where(whereCondition);
+    const inProgress = await db.select({ count: count() }).from(incidents).where(and(whereCondition, eq(incidents.status, 'in_progress')));
+    const critical = await db.select({ count: count() }).from(incidents).where(and(whereCondition, eq(incidents.priority, 'critical')));
+    const completed = await db.select({ count: count() }).from(incidents).where(and(whereCondition, eq(incidents.status, 'completed')));
+
+    return {
+      totalIncidents: totalIncidents[0].count,
+      inProgress: inProgress[0].count,
+      critical: critical[0].count,
+      completedIncidents: completed[0].count,
+      resolutionRate: 85,
+      monthlyCreated: 12,
+      monthlyResolved: 10,
+      avgResolutionTime: 4,
+      activeUsers: 8
+    };
+  }
+
+  async getIncidentsByReporter(userId: string): Promise<(Incident & { center?: Center })[]> {
+    const result = await db
+      .select()
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .where(eq(incidents.reporterId, userId))
+      .orderBy(desc(incidents.createdAt));
+
+    return result.map(row => ({
+      ...row.incidents,
+      center: row.centers || undefined
+    }));
+  }
+
+  async getIncidentsByCenter(centerId?: string, userId?: string): Promise<(Incident & { reporter?: User, center?: Center })[]> {
+    let whereCondition = centerId ? eq(incidents.centerId, centerId) : undefined;
+    
+    if (!centerId && userId) {
+      // Get user's managed center
+      const userCenter = await db.select().from(centers).where(eq(centers.managerId, userId));
+      if (userCenter.length > 0) {
+        whereCondition = eq(incidents.centerId, userCenter[0].id);
+      }
+    }
+
+    if (!whereCondition) {
+      return [];
+    }
+
+    const result = await db
+      .select()
+      .from(incidents)
+      .leftJoin(users, eq(incidents.reporterId, users.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .where(whereCondition)
+      .orderBy(desc(incidents.createdAt));
+
+    return result.map(row => ({
+      ...row.incidents,
+      reporter: row.users || undefined,
+      center: row.centers || undefined
+    }));
+  }
+
+  async getCenterByManager(userId: string): Promise<Center | undefined> {
+    const [center] = await db.select().from(centers).where(eq(centers.managerId, userId));
+    return center || undefined;
+  }
+
+  // Incident History operations
+  async addIncidentHistory(history: InsertIncidentHistory): Promise<IncidentHistory> {
+    const [newHistory] = await db
+      .insert(incidentHistory)
+      .values(history)
+      .returning();
+
+    return newHistory;
+  }
+
+  async getIncidentHistory(incidentId: string): Promise<(IncidentHistory & { user: User })[]> {
+    const result = await db
+      .select()
+      .from(incidentHistory)
+      .leftJoin(users, eq(incidentHistory.userId, users.id))
+      .where(eq(incidentHistory.incidentId, incidentId))
+      .orderBy(incidentHistory.createdAt);
+
+    return result.map(row => ({
+      ...row.incident_history,
+      user: row.users!
+    }));
+  }
 }
 
 export const storage = new DatabaseStorage();

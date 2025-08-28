@@ -100,15 +100,17 @@ export function IncidentForm() {
 
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     try {
-      const uploadedFiles = [];
-      for (const file of result.successful) {
-        if (file.uploadURL) {
-          // Set ACL policy for the uploaded file
-          const response = await apiRequest("PUT", "/api/evidence-files", {
-            evidenceFileURL: file.uploadURL,
-          });
-          const data = await response.json();
-          uploadedFiles.push(data.objectPath);
+      const uploadedFiles: string[] = [];
+      if (result.successful) {
+        for (const file of result.successful) {
+          if (file.uploadURL) {
+            // Set ACL policy for the uploaded file
+            const response = await apiRequest("PUT", "/api/evidence-files", {
+              evidenceFileURL: file.uploadURL,
+            });
+            const data = await response.json();
+            uploadedFiles.push(data.objectPath);
+          }
         }
       }
       setEvidenceFiles(prev => [...prev, ...uploadedFiles]);
@@ -174,7 +176,7 @@ export function IncidentForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {centers?.map((center: any) => (
+                        {(centers as any[])?.map((center: any) => (
                           <SelectItem key={center.id} value={center.id}>
                             {center.name}
                           </SelectItem>
@@ -199,7 +201,7 @@ export function IncidentForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {incidentTypes?.map((type: any) => (
+                        {(incidentTypes as any[])?.map((type: any) => (
                           <SelectItem key={type.id} value={type.id}>
                             {type.name}
                           </SelectItem>

@@ -96,6 +96,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Global stats for admin dashboard
+  app.get('/api/dashboard/global-stats', isAuthenticated, async (req: any, res) => {
+    try {
+      const globalStats = await storage.getGlobalStats();
+      res.json(globalStats);
+    } catch (error) {
+      console.error("Error fetching global stats:", error);
+      res.status(500).json({ message: "Failed to fetch global stats" });
+    }
+  });
+
+  // Center stats for manager dashboard
+  app.get('/api/dashboard/center-stats/:centerId?', isAuthenticated, async (req: any, res) => {
+    try {
+      const centerId = req.params.centerId;
+      const userId = req.user?.claims?.sub;
+      const centerStats = await storage.getCenterStats(centerId, userId);
+      res.json(centerStats);
+    } catch (error) {
+      console.error("Error fetching center stats:", error);
+      res.status(500).json({ message: "Failed to fetch center stats" });
+    }
+  });
+
+  // Get user's own incidents
+  app.get('/api/incidents/my', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const incidents = await storage.getIncidentsByReporter(userId);
+      res.json(incidents);
+    } catch (error) {
+      console.error("Error fetching user incidents:", error);
+      res.status(500).json({ message: "Failed to fetch incidents" });
+    }
+  });
+
+  // Get incidents by center (for managers)
+  app.get('/api/incidents/center/:centerId?', isAuthenticated, async (req: any, res) => {
+    try {
+      const centerId = req.params.centerId;
+      const userId = req.user?.claims?.sub;
+      const incidents = await storage.getIncidentsByCenter(centerId, userId);
+      res.json(incidents);
+    } catch (error) {
+      console.error("Error fetching center incidents:", error);
+      res.status(500).json({ message: "Failed to fetch center incidents" });
+    }
+  });
+
+  // Get user's managed center
+  app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const center = await storage.getCenterByManager(userId);
+      res.json(center);
+    } catch (error) {
+      console.error("Error fetching managed center:", error);
+      res.status(500).json({ message: "Failed to fetch center" });
+    }
+  });
+
   // Incidents endpoints
   app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
     try {
