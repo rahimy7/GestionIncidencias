@@ -30,9 +30,29 @@ export default function Landing() {
                 >
                   Iniciar Sesión
                 </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Para desarrollo
+                    </span>
+                  </div>
+                </div>
+
+                <Button 
+                  onClick={() => window.location.href = '/test-users'}
+                  variant="outline"
+                  className="w-full"
+                  data-testid="button-test-users"
+                >
+                  Usuarios de Prueba
+                </Button>
                 
                 <p className="text-xs text-center text-muted-foreground">
-                  Utiliza tu cuenta de Replit para acceder
+                  Utiliza tu cuenta de Replit para acceder o prueba con usuarios demo
                 </p>
               </div>
               

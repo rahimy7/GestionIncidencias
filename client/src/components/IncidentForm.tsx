@@ -176,7 +176,7 @@ export function IncidentForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(centers as any[])?.map((center: any) => (
+                        {(centers as any[])?.filter(center => center?.id && center?.name)?.map((center: any) => (
                           <SelectItem key={center.id} value={center.id}>
                             {center.name}
                           </SelectItem>
@@ -201,7 +201,7 @@ export function IncidentForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(incidentTypes as any[])?.map((type: any) => (
+                        {(incidentTypes as any[])?.filter(type => type?.id && type?.name)?.map((type: any) => (
                           <SelectItem key={type.id} value={type.id}>
                             {type.name}
                           </SelectItem>

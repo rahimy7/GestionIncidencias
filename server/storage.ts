@@ -69,6 +69,9 @@ export interface IStorage {
     completed: number;
     avgResolutionTime: number;
   }>;
+
+  // Test users for development
+  getTestUsers(): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -550,6 +553,17 @@ export class DatabaseStorage implements IStorage {
       ...row.incident_history,
       user: row.users!
     }));
+  }
+
+  // Get test users for development
+  async getTestUsers(): Promise<User[]> {
+    const testUsers = await db
+      .select()
+      .from(users)
+      .where(sql`email LIKE '%@test.com'`)
+      .orderBy(users.role, users.firstName);
+      
+    return testUsers;
   }
 }
 

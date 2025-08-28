@@ -28,13 +28,13 @@ export function AdminDashboard() {
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   
   // Obtener estadísticas globales
-  const { data: globalStats, isLoading: globalLoading } = useQuery({
+  const { data: globalStats = {}, isLoading: globalLoading } = useQuery({
     queryKey: ['/api/dashboard/global-stats'],
     enabled: !!user,
   });
 
   // Obtener todos los centros
-  const { data: centers, isLoading: centersLoading } = useQuery({
+  const { data: centers = [], isLoading: centersLoading } = useQuery({
     queryKey: ['/api/centers'],
     enabled: !!user,
   });
@@ -46,7 +46,7 @@ export function AdminDashboard() {
   });
 
   // Obtener estadísticas del centro seleccionado
-  const { data: centerStats, isLoading: centerStatsLoading } = useQuery({
+  const { data: centerStats = {}, isLoading: centerStatsLoading } = useQuery({
     queryKey: ['/api/dashboard/center-stats', selectedCenter],
     enabled: !!selectedCenter,
   });
@@ -277,7 +277,7 @@ export function AdminDashboard() {
                       <SelectValue placeholder="Seleccionar centro para análisis..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {(centers as any[])?.map((center: any) => (
+                      {(centers as any[])?.filter(center => center?.id && center?.name)?.map((center: any) => (
                         <SelectItem key={center.id} value={center.id}>
                           {center.name} - {center.code}
                         </SelectItem>

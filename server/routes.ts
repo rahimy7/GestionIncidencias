@@ -347,6 +347,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ruta para obtener usuarios de prueba
+  app.get('/api/test-users', async (req, res) => {
+    try {
+      const testUsers = await storage.getTestUsers();
+      res.json(testUsers);
+    } catch (error) {
+      console.error('Error getting test users:', error);
+      res.status(500).json({ message: 'Error fetching test users' });
+    }
+  });
+
+  // Ruta para simular login con usuario de prueba (solo para desarrollo)
+  app.post('/api/test-login', async (req, res) => {
+    try {
+      const { userId, email } = req.body;
+      
+      if (!userId || !email) {
+        return res.status(400).json({ message: 'userId and email are required' });
+      }
+
+      // En un entorno de prueba, simplemente actualizamos la sesión
+      // NOTA: Esto es solo para propósitos de testing
+      if (req.session && typeof req.session === 'object') {
+        (req.session as any).testUser = { id: userId, email };
+      }
+
+      res.json({ success: true, message: 'Test user set successfully' });
+    } catch (error) {
+      console.error('Error setting test user:', error);
+      res.status(500).json({ message: 'Error setting test user' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

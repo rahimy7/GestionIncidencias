@@ -12,6 +12,7 @@ import NotFound from "@/pages/not-found";
 import { UserDashboard } from "@/pages/UserDashboard";
 import { ManagerDashboard } from "@/pages/ManagerDashboard";
 import { AdminDashboard } from "@/pages/AdminDashboard";
+import { TestUsers } from "@/pages/TestUsers";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -43,6 +44,7 @@ function Router() {
           <Route path="/dashboard/admin" component={AdminDashboard} />
           <Route path="/incidents" component={Incidents} />
           <Route path="/reports" component={Reports} />
+          <Route path="/test-users" component={TestUsers} />
         </>
       )}
       <Route component={NotFound} />
