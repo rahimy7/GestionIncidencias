@@ -173,6 +173,17 @@ app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
     }
   });
 
+  app.get('/api/incidents/assigned', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const incidents = await storage.getIncidentsByAssignee(userId);
+    res.json(incidents);
+  } catch (error) {
+    console.error("Error fetching assigned incidents:", error);
+    res.status(500).json({ message: "Failed to fetch assigned incidents" });
+  }
+});
+
   app.post("/api/incidents", isAuthenticated, async (req: any, res) => {
     try {
       // FIX: Usar req.user.id en lugar de req.user.claims.sub

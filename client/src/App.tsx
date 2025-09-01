@@ -13,6 +13,7 @@ import { UserDashboard } from "@/pages/UserDashboard";
 import { ManagerDashboard } from "@/pages/ManagerDashboard";
 import { AdminDashboard } from "@/pages/AdminDashboard";
 import { TestUsers } from "@/pages/TestUsers";
+import { NewIncident } from "@/pages/NewIncident";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -46,6 +47,7 @@ function Router() {
           <Route path="/dashboard/manager" component={ManagerDashboard} />
           <Route path="/dashboard/admin" component={AdminDashboard} />
           <Route path="/incidents" component={Incidents} />
+           <Route path="/incidents/new" component={NewIncident} />
           <Route path="/reports" component={Reports} />
         </>
       )}

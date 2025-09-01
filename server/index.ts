@@ -60,12 +60,26 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  // ALWAYS serve the app on the port specified in the environment variable PORT
+const port = parseInt(process.env.PORT || "3000", 10);
+
+// Usa HOST=127.0.0.1 en desarrollo Windows (o deja vacío para que use loopback)
+// Evita 0.0.0.0 y "::" para no tener sorpresas en Windows
+const rawHost = (process.env.HOST || "").trim().toLowerCase();
+const host =
+  rawHost && !["0.0.0.0", "::"].includes(rawHost) ? rawHost : "127.0.0.1";
+
+server.listen(port, "0.0.0.0", () => {
+  log(`✅ Servidor corriendo en http://0.0.0.0:${port}`);
+});
+
+// Manejo de errores opcional
+server.on("error", (err: any) => {
+  if (err.code === "EADDRINUSE") {
+    log(`❌ El puerto ${port} ya está en uso`);
+  } else {
+    log(`❌ Error al iniciar: ${err.message}`);
+  }
+});
+
 })();

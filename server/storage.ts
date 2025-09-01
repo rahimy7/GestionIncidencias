@@ -50,6 +50,7 @@ export interface IStorage {
   getIncidentById(id: string): Promise<IncidentWithDetails | undefined>;
   createIncident(incident: InsertIncident): Promise<Incident>;
   updateIncident(id: string, updates: Partial<InsertIncident>): Promise<Incident>;
+  getIncidentsByAssignee(userId: string): Promise<(Incident & { center?: Center; reporter?: User })[]>;
   
   // Action Plans operations
   getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { assignee: User })[]>;
@@ -212,6 +213,22 @@ export class DatabaseStorage implements IStorage {
     return Array.from(incidentsMap.values());
   }
 
+  async getIncidentsByAssignee(userId: string): Promise<(Incident & { center?: Center; reporter?: User })[]> {
+  const result = await db
+    .select()
+    .from(incidents)
+    .leftJoin(centers, eq(incidents.centerId, centers.id))
+    .leftJoin(users, eq(incidents.reporterId, users.id))
+    .where(eq(incidents.assigneeId, userId))
+    .orderBy(desc(incidents.createdAt));
+
+  return result.map(row => ({
+    ...row.incidents,
+    center: row.centers || undefined,
+    reporter: row.users || undefined
+  }));
+}
+
   async getIncidentById(id: string): Promise<IncidentWithDetails | undefined> {
     const results = await this.getIncidents();
     return results.find(incident => incident.id === id);
@@ -366,6 +383,8 @@ export class DatabaseStorage implements IStorage {
           ) : sql`true`
         )
       );
+
+      
 
     // Completed incidents
     const completedResult = await db
