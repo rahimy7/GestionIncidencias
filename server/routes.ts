@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { login, register, isAuthenticated } from "./auth"; // Cambiar import
 import {
   ObjectStorageService,
   ObjectNotFoundError,
@@ -15,14 +15,29 @@ import {
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
-  await setupAuth(app);
+  // Auth routes - JWT instead of Replit
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const result = await login(email, password);
+      res.json(result);
+    } catch (error: any) {
+      res.status(401).json({ message: error.message });
+    }
+  });
 
-  // Auth routes
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const result = await register(req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      const user = await storage.getUser(userId);
+      const user = await storage.getUser(req.user.id);
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -30,9 +45,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Object storage endpoints for protected file uploading
+  // Object storage endpoints
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req as any).user.id;
     const objectStorageService = new ObjectStorageService();
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(
@@ -369,9 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // En un entorno de prueba, simplemente actualizamos la sesión
       // NOTA: Esto es solo para propósitos de testing
-      if (req.session && typeof req.session === 'object') {
-        (req.session as any).testUser = { id: userId, email };
-      }
+      res.json({ success: true, message: 'Use /api/auth/login instead' });
 
       res.json({ success: true, message: 'Test user set successfully' });
     } catch (error) {

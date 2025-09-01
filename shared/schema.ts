@@ -62,9 +62,10 @@ export const actionStatusEnum = pgEnum("action_status", [
 // Users table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
+  email: varchar("email").unique().notNull(),
+  password: varchar("password"),
+  firstName: varchar("first_name"), // snake_case en DB
+  lastName: varchar("last_name"),   // snake_case en DB
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").default("user").notNull(),
   department: varchar("department"),
@@ -116,7 +117,7 @@ export const incidents = pgTable("incidents", {
   actualResolutionDate: timestamp("actual_resolution_date"),
   
   // Evidence
-  evidenceFiles: jsonb("evidence_files").$type<string[]>().default([]),
+evidenceFiles: jsonb("evidence_files").$type<string[]>(),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -147,8 +148,7 @@ export const actionPlans = pgTable("action_plans", {
   dueDate: timestamp("due_date").notNull(),
   completedAt: timestamp("completed_at"),
   
-  // Evidence
-  evidenceFiles: jsonb("evidence_files").$type<string[]>().default([]),
+
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -321,4 +321,13 @@ export type IncidentWithDetails = Incident & {
   participants: (IncidentParticipant & { user: User })[];
   actionPlans: (ActionPlan & { assignee: User })[];
   history: (IncidentHistory & { user?: User })[];
+};
+export type CreateUser = {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role?: "user" | "manager" | "department" | "supervisor" | "admin";
+  department?: string;
+  location?: string;
 };

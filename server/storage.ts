@@ -21,6 +21,7 @@ import {
   type ActionPlan,
   type InsertIncidentHistory,
   type IncidentHistory,
+  CreateUser,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql } from "drizzle-orm";
@@ -69,6 +70,9 @@ export interface IStorage {
     completed: number;
     avgResolutionTime: number;
   }>;
+
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(userData: CreateUser): Promise<User>;
 
   // Test users for development
   getTestUsers(): Promise<User[]>;
@@ -267,11 +271,14 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createActionPlan(actionPlan: InsertActionPlan): Promise<ActionPlan> {
-    const [newActionPlan] = await db
-      .insert(actionPlans)
-      .values(actionPlan)
-      .returning();
+ async createActionPlan(actionPlan: InsertActionPlan): Promise<ActionPlan> {
+  const [newActionPlan] = await db
+    .insert(actionPlans)
+    .values({
+      ...actionPlan,
+    
+    })
+    .returning();
 
     // Add to incident history
     await this.addIncidentHistory({
@@ -315,15 +322,6 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  // History operations
-  async addIncidentHistory(history: InsertIncidentHistory): Promise<IncidentHistory> {
-    const [newHistory] = await db
-      .insert(incidentHistory)
-      .values(history)
-      .returning();
-
-    return newHistory;
-  }
 
   // Dashboard statistics
   async getDashboardStats(userId?: string): Promise<{
@@ -565,6 +563,16 @@ export class DatabaseStorage implements IStorage {
       
     return testUsers;
   }
+
+   async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+async createUser(userData: CreateUser): Promise<User> {
+  const [user] = await db.insert(users).values(userData).returning();
+  return user;
+}
 }
 
 export const storage = new DatabaseStorage();
