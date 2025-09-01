@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IncidentTracker - Sistema de Gestión de Incidencias</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                borderRadius: {
+                    lg: "var(--radius)",
+                    md: "calc(var(--radius) - 2px)",
+                    sm: "calc(var(--radius) - 4px)",
+                },
+                colors: {
+                    background: "var(--background)",
+                    foreground: "var(--foreground)",
+                    card: {
+                        DEFAULT: "var(--card)",
+                        foreground: "var(--card-foreground)",
+                    },
+                    popover: {
+                        DEFAULT: "var(--popover)",
+                        foreground: "var(--popover-foreground)",
+                    },
+                    primary: {
+                        DEFAULT: "var(--primary)",
+                        foreground: "var(--primary-foreground)",
+                    },
+                    secondary: {
+                        DEFAULT: "var(--secondary)",
+                        foreground: "var(--secondary-foreground)",
+                    },
+                    muted: {
+                        DEFAULT: "var(--muted)",
+                        foreground: "var(--muted-foreground)",
+                    },
+                    accent: {
+                        DEFAULT: "var(--accent)",
+                        foreground: "var(--accent-foreground)",
+                    },
+                    destructive: {
+                        DEFAULT: "var(--destructive)",
+                        foreground: "var(--destructive-foreground)",
+                    },
+                    border: "var(--border)",
+                    input: "var(--input)",
+                    ring: "var(--ring)",
+                }
+            },
+            fontFamily: {
+                sans: ["Inter", "sans-serif"],
+            }
+        }
+    };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/heroicons@2.0.18/24/outline/index.js"></script>
+    <style>
+        :root {
+            --background: hsl(210 40% 98%);
+            --foreground: hsl(222 84% 5%);
+            --card: hsl(0 0% 100%);
+            --card-foreground: hsl(222 84% 5%);
+            --popover: hsl(0 0% 100%);
+            --popover-foreground: hsl(222 84% 5%);
+            --primary: hsl(221 83% 53%);
+            --primary-foreground: hsl(210 40% 98%);
+            --secondary: hsl(158 64% 52%);
+            --secondary-foreground: hsl(222 84% 5%);
+            --muted: hsl(210 40% 96%);
+            --muted-foreground: hsl(215 16% 47%);
+            --accent: hsl(262 83% 58%);
+            --accent-foreground: hsl(210 40% 98%);
+            --destructive: hsl(0 84% 60%);
+            --destructive-foreground: hsl(210 40% 98%);
+            --border: hsl(214 32% 91%);
+            --input: hsl(214 32% 91%);
+            --ring: hsl(221 83% 53%);
+            --radius: 0.75rem;
+            --warning: hsl(25 95% 53%);
+            --success: hsl(142 76% 36%);
+        }
+    </style>
+</head>
+<body class="bg-background font-sans antialiased">
+
+    <!-- @COMPONENT: AppLayout [Main application container with navigation and content areas] -->
+    <div class="min-h-screen flex flex-col">
+        
+        <!-- @COMPONENT: TopNavigation [Global navigation bar with user menu and notifications] -->
+        <nav class="bg-card border-b border-border sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <h1 class="text-xl font-bold text-primary">IncidentTracker</h1>
+                        </div>
+                        <div class="hidden md:block">
+                            <div class="ml-10 flex items-baseline space-x-4">
+                                <a href="#dashboard" class="bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                                <a href="#incidents" class="text-muted-foreground hover:text-foreground px-3 py-2 rounded-md text-sm font-medium">Incidencias</a>
+                                <a href="#reports" class="text-muted-foreground hover:text-foreground px-3 py-2 rounded-md text-sm font-medium">Reportes</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <div class="relative">
+                            <button class="bg-accent text-accent-foreground px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Nueva Incidencia
+                            </button>
+                        </div>
+                        
+                        <div class="relative">
+                            <button class="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5zm-8.707-3.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L10.586 19H3a1 1 0 010-2h7.586l-3.293-3.293a1 1 0 010-1.414z" />
+                                </svg>
+                            </button>
+                            <span class="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">3</span>
+                        </div>
+                        
+                        <div class="relative">
+                            <button class="flex items-center space-x-2 text-sm font-medium text-foreground hover:text-muted-foreground">
+                                <span class="hidden md:block">Maria González</span>
+                                <div class="h-8 w-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
+                                    MG
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        <!-- @END_COMPONENT: TopNavigation -->
+
+        <!-- @COMPONENT: MainContent [Primary content area with dashboard and forms] -->
+        <main class="flex-1 bg-background">
+            
+            <!-- @COMPONENT: DashboardView [Overview statistics and quick actions] -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                
+                <!-- Stats Overview -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-muted-foreground">Total Incidencias</p>
+                                <p class="text-3xl font-bold text-foreground">147</p>
+                            </div>
+                            <div class="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                                <svg class="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-2">+12% vs mes anterior</p>
+                    </div>
+
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-muted-foreground">En Progreso</p>
+                                <p class="text-3xl font-bold text-warning">23</p>
+                            </div>
+                            <div class="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                <svg class="h-6 w-6 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-2">Requieren atención</p>
+                    </div>
+
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-muted-foreground">Completadas</p>
+                                <p class="text-3xl font-bold text-secondary">98</p>
+                            </div>
+                            <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                <svg class="h-6 w-6 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-2">67% tasa de resolución</p>
+                    </div>
+
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-muted-foreground">Tiempo Promedio</p>
+                                <p class="text-3xl font-bold text-accent">4.2d</p>
+                            </div>
+                            <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                                <svg class="h-6 w-6 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-2">-0.8d vs objetivo</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    
+                    <!-- @COMPONENT: NewIncidentForm [Form for reporting new incidents] -->
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                            <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Reportar Nueva Incidencia
+                        </h3>
+                        
+                        <form class="space-y-4" data-implementation="Handle form submission with photo upload">
+                            <div>
+                                <label class="block text-sm font-medium text-foreground mb-1">Centro/Tienda</label>
+                                <select class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                    <option data-mock="true">Seleccionar centro...</option>
+                                    <option data-mock="true">Centro Comercial Norte</option>
+                                    <option data-mock="true">Tienda Zona Sur</option>
+                                    <option data-mock="true">Almacén Central</option>
+                                    <option data-mock="true">Sucursal Este</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-foreground mb-1">Tipo de Incidencia</label>
+                                <select class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                    <option data-mock="true">Seleccionar tipo...</option>
+                                    <option data-mock="true">Seguridad</option>
+                                    <option data-mock="true">Calidad</option>
+                                    <option data-mock="true">Operaciones</option>
+                                    <option data-mock="true">Mantenimiento</option>
+                                    <option data-mock="true">Recursos Humanos</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-foreground mb-1">Descripción</label>
+                                <textarea 
+                                    rows="3" 
+                                    class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" 
+                                    placeholder="Describe la incidencia detalladamente..."
+                                    data-mock="true">
+                                </textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-foreground mb-1">Evidencia Fotográfica</label>
+                                <div class="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center hover:border-primary/50 transition-colors cursor-pointer" data-implementation="Implement camera capture and file upload">
+                                    <svg class="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <p class="text-sm text-muted-foreground">Haz clic para tomar foto o subir imagen</p>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button type="button" class="flex-1 px-4 py-2 border border-input rounded-md text-muted-foreground hover:bg-muted transition-colors">
+                                    Cancelar
+                                </button>
+                                <button type="submit" class="flex-1 bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                                    Reportar Incidencia
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    <!-- @END_COMPONENT: NewIncidentForm -->
+
+                    <!-- @COMPONENT: RecentIncidents [List of recent incidents with status] -->
+                    <div class="bg-card p-6 rounded-lg border border-border">
+                        <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center justify-between">
+                            <span class="flex items-center gap-2">
+                                <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                                Incidencias Recientes
+                            </span>
+                            <a href="#" class="text-sm text-primary hover:text-primary/80">Ver todas</a>
+                        </h3>
+
+                        <div class="space-y-3">
+                            <!-- @MAP: recentIncidents.map(incident => ( -->
+                            <div class="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors cursor-pointer" data-event="click:viewIncidentDetail">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            En Progreso
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">#INC-2024-001</span>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground">hace 2h</span>
+                                </div>
+                                <h4 class="font-medium text-foreground mb-1" data-mock="true">Fuga de agua en área de almacén</h4>
+                                <p class="text-sm text-muted-foreground mb-2" data-mock="true">Centro Comercial Norte • Mantenimiento</p>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-muted-foreground" data-mock="true">Asignado a: Juan Pérez</span>
+                                    <span class="text-xs text-warning font-medium">Vence en 1 día</span>
+                                </div>
+                            </div>
+
+                            <div class="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors cursor-pointer" data-event="click:viewIncidentDetail">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                            Crítica
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">#INC-2024-002</span>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground">hace 4h</span>
+                                </div>
+                                <h4 class="font-medium text-foreground mb-1" data-mock="true">Incidente de seguridad en entrada principal</h4>
+                                <p class="text-sm text-muted-foreground mb-2" data-mock="true">Tienda Zona Sur • Seguridad</p>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-muted-foreground" data-mock="true">Asignado a: Ana Rodríguez</span>
+                                    <span class="text-xs text-destructive font-medium">Vencida</span>
+                                </div>
+                            </div>
+
+                            <div class="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors cursor-pointer" data-event="click:viewIncidentDetail">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            Completada
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">#INC-2024-003</span>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground">ayer</span>
+                                </div>
+                                <h4 class="font-medium text-foreground mb-1" data-mock="true">Problema con sistema de aires acondicionados</h4>
+                                <p class="text-sm text-muted-foreground mb-2" data-mock="true">Almacén Central • Operaciones</p>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-muted-foreground" data-mock="true">Completado por: Carlos López</span>
+                                    <span class="text-xs text-secondary font-medium">Resuelto a tiempo</span>
+                                </div>
+                            </div>
+                            <!-- @END_MAP )) -->
+                        </div>
+                    </div>
+                    <!-- @END_COMPONENT: RecentIncidents -->
+
+                </div>
+
+                <!-- @COMPONENT: IncidentDetailModal [Detailed view for incident management] -->
+                <div class="mt-8 bg-card p-6 rounded-lg border border-border" data-mock="true" style="display: block;">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-foreground flex items-center gap-2">
+                                <svg class="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Incidencia #INC-2024-001
+                            </h2>
+                            <p class="text-muted-foreground" data-mock="true">Fuga de agua en área de almacén</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                                En Progreso
+                            </span>
+                            <button class="p-2 rounded-md border border-input hover:bg-muted transition-colors">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Left Column: Incident Details -->
+                        <div class="lg:col-span-2 space-y-6">
+                            
+                            <!-- Basic Information -->
+                            <div class="border border-border rounded-lg p-4">
+                                <h3 class="font-semibold text-foreground mb-3">Información Básica</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Centro/Tienda</p>
+                                        <p class="font-medium" data-mock="true">Centro Comercial Norte</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Tipo</p>
+                                        <p class="font-medium" data-mock="true">Mantenimiento</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Reportado por</p>
+                                        <p class="font-medium" data-mock="true">María González</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Fecha de Reporte</p>
+                                        <p class="font-medium" data-mock="true">15 Nov 2024, 14:30</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Root Cause Analysis -->
+                            <div class="border border-border rounded-lg p-4">
+                                <h3 class="font-semibold text-foreground mb-3">Análisis de Causa Raíz</h3>
+                                <textarea 
+                                    rows="3" 
+                                    class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" 
+                                    placeholder="Describir el análisis de la causa raíz..."
+                                    data-mock="true">Tubería principal con desgaste por antigüedad. Falta de mantenimiento preventivo en sistema de plomería.
+                                </textarea>
+                            </div>
+
+                            <!-- Participants -->
+                            <div class="border border-border rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="font-semibold text-foreground">Participantes</h3>
+                                    <button class="text-sm text-primary hover:text-primary/80">+ Agregar Participante</button>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between p-2 bg-muted rounded-md">
+                                        <div class="flex items-center gap-2">
+                                            <div class="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">JP</div>
+                                            <div>
+                                                <p class="text-sm font-medium" data-mock="true">Juan Pérez</p>
+                                                <p class="text-xs text-muted-foreground" data-mock="true">Gerente de Mantenimiento</p>
+                                            </div>
+                                        </div>
+                                        <span class="text-xs px-2 py-1 bg-secondary text-secondary-foreground rounded-full" data-mock="true">Responsable</span>
+                                    </div>
+                                    <div class="flex items-center justify-between p-2 bg-muted rounded-md">
+                                        <div class="flex items-center gap-2">
+                                            <div class="h-8 w-8 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-sm">AR</div>
+                                            <div>
+                                                <p class="text-sm font-medium" data-mock="true">Ana Rodríguez</p>
+                                                <p class="text-xs text-muted-foreground" data-mock="true">Supervisor de Operaciones</p>
+                                            </div>
+                                        </div>
+                                        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full" data-mock="true">Participante</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Plans -->
+                            <div class="border border-border rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="font-semibold text-foreground">Planes de Acción</h3>
+                                    <button class="text-sm text-primary hover:text-primary/80">+ Nueva Acción</button>
+                                </div>
+                                <div class="space-y-3">
+                                    <div class="border border-border rounded-md p-3">
+                                        <div class="flex items-start justify-between mb-2">
+                                            <h4 class="font-medium text-foreground" data-mock="true">Reparación inmediata de tubería</h4>
+                                            <span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full">En Progreso</span>
+                                        </div>
+                                        <p class="text-sm text-muted-foreground mb-2" data-mock="true">Contactar plomero certificado y realizar reparación de emergencia</p>
+                                        <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span data-mock="true">Asignado a: Juan Pérez</span>
+                                            <span data-mock="true">Vence: 16 Nov 2024</span>
+                                        </div>
+                                    </div>
+                                    <div class="border border-border rounded-md p-3">
+                                        <div class="flex items-start justify-between mb-2">
+                                            <h4 class="font-medium text-foreground" data-mock="true">Inspección completa del sistema</h4>
+                                            <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">Pendiente</span>
+                                        </div>
+                                        <p class="text-sm text-muted-foreground mb-2" data-mock="true">Revisar todo el sistema de plomería para prevenir futuras incidencias</p>
+                                        <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span data-mock="true">Asignado a: Mantenimiento</span>
+                                            <span data-mock="true">Vence: 20 Nov 2024</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Right Column: Timeline & Evidence -->
+                        <div class="space-y-6">
+                            
+                            <!-- Timeline -->
+                            <div class="border border-border rounded-lg p-4">
+                                <h3 class="font-semibold text-foreground mb-3">Línea de Tiempo</h3>
+                                <div class="space-y-3">
+                                    <div class="flex gap-3">
+                                        <div class="flex flex-col items-center">
+                                            <div class="h-2 w-2 bg-secondary rounded-full"></div>
+                                            <div class="h-8 w-0.5 bg-border"></div>
+                                        </div>
+                                        <div class="flex-1 pb-3">
+                                            <p class="text-sm font-medium" data-mock="true">Incidencia reportada</p>
+                                            <p class="text-xs text-muted-foreground" data-mock="true">15 Nov 14:30 - María González</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <div class="flex flex-col items-center">
+                                            <div class="h-2 w-2 bg-primary rounded-full"></div>
+                                            <div class="h-8 w-0.5 bg-border"></div>
+                                        </div>
+                                        <div class="flex-1 pb-3">
+                                            <p class="text-sm font-medium" data-mock="true">Asignado a gerente</p>
+                                            <p class="text-xs text-muted-foreground" data-mock="true">15 Nov 15:00 - Sistema</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <div class="flex flex-col items-center">
+                                            <div class="h-2 w-2 bg-warning rounded-full"></div>
+                                        </div>
+                                        <div class="flex-1">
+                                            <p class="text-sm font-medium" data-mock="true">En investigación</p>
+                                            <p class="text-xs text-muted-foreground" data-mock="true">15 Nov 16:00 - Juan Pérez</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Evidence -->
+                            <div class="border border-border rounded-lg p-4">
+                                <h3 class="font-semibold text-foreground mb-3">Evidencias</h3>
+                                <div class="space-y-3">
+                                    <!-- Photo shows water damage on floor and wall with visible water accumulation -->
+                                    <div class="relative group cursor-pointer">
+                                        <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=400&h=200" 
+                                             alt="Water damage on floor showing flooding" 
+                                             class="w-full h-24 object-cover rounded-md border border-border" />
+                                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
+                                            <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="border border-border rounded-md p-2">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                                <span class="text-sm font-medium" data-mock="true">Reporte_inicial.pdf</span>
+                                            </div>
+                                            <button class="text-xs text-primary hover:text-primary/80">Ver</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <button class="w-full mt-3 border border-dashed border-muted-foreground/25 rounded-md p-3 text-sm text-muted-foreground hover:border-primary/50 transition-colors" data-implementation="Implement file upload functionality">
+                                    + Agregar Evidencia
+                                </button>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="space-y-2">
+                                <button class="w-full bg-secondary text-secondary-foreground px-4 py-2 rounded-md font-medium hover:bg-secondary/90 transition-colors">
+                                    Marcar como Completada
+                                </button>
+                                <button class="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 transition-colors">
+                                    Actualizar Estado
+                                </button>
+                                <button class="w-full border border-input text-foreground px-4 py-2 rounded-md font-medium hover:bg-muted transition-colors">
+                                    Escalar Incidencia
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_COMPONENT: IncidentDetailModal -->
+
+            </div>
+            <!-- @END_COMPONENT: DashboardView -->
+
+        </main>
+        <!-- @END_COMPONENT: MainContent -->
+
+    </div>
+    <!-- @END_COMPONENT: AppLayout -->
+
+    <script>
+        // TODO: Implement business logic, API calls, and state management
+        (function() {
+            // Mock data for demonstration
+            const mockIncidents = [
+                {
+                    id: 'INC-2024-001',
+                    title: 'Fuga de agua en área de almacén',
+                    status: 'En Progreso',
+                    priority: 'Media',
+                    location: 'Centro Comercial Norte',
+                    assignee: 'Juan Pérez',
+                    reporter: 'María González',
+                    createdAt: '2024-11-15T14:30:00Z'
+                }
+            ];
+
+            // TODO: Replace with real API integration
+            function loadIncidents() {
+                console.log('Loading incidents...', mockIncidents);
+            }
+
+            // TODO: Implement photo capture functionality
+            function initializeCameraCapture() {
+                console.log('Camera capture functionality to be implemented');
+            }
+
+            // TODO: Implement real-time notifications
+            function setupNotifications() {
+                console.log('Notification system to be implemented');
+            }
+
+            // Initialize on page load
+            document.addEventListener('DOMContentLoaded', function() {
+                loadIncidents();
+                initializeCameraCapture();
+                setupNotifications();
+            });
+        })();
+    </script>
+
+</body>
+</html>
