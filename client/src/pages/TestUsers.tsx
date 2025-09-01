@@ -4,35 +4,48 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Users, Crown, Shield, User, Settings, ChevronRight, LogIn } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+
+// Definir el tipo de usuario
+interface TestUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+}
 
 export function TestUsers() {
-  const { data: testUsers, isLoading } = useQuery({
+  const { data: testUsers = [], isLoading } = useQuery<TestUser[]>({
     queryKey: ["/api/test-users"],
   });
 
-  const handleUserLogin = async (user: any) => {
+  const handleUserLogin = async (user: TestUser) => {
     try {
-      await apiRequest("/api/test-login", {
-        method: "POST",
+      // Primero hacer login real
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user.id,
           email: user.email,
+          password: 'password123' // Password por defecto para usuarios de prueba
         }),
       });
 
-      toast({
-        title: "Usuario cambiado",
-        description: `Ahora estás conectado como ${user.firstName} ${user.lastName}`,
-      });
+      if (response.ok) {
+        const result = await response.json();
+        localStorage.setItem('auth_token', result.token);
 
-      // Redirigir a la página principal después de cambiar usuario
-      setTimeout(() => {
+        toast({
+          title: "Usuario cambiado",
+          description: `Ahora estás conectado como ${user.firstName} ${user.lastName}`,
+        });
+
         window.location.href = "/";
-      }, 1000);
+      } else {
+        throw new Error('Login failed');
+      }
     } catch (error) {
       console.error("Error switching user:", error);
       toast({
@@ -62,13 +75,12 @@ export function TestUsers() {
       case "admin":
         return "bg-red-100 text-red-800 border-red-200";
       case "manager":
-        return "bg-blue-100 text-blue-800 border-blue-200";
       case "supervisor":
-        return "bg-green-100 text-green-800 border-green-200";
+        return "bg-blue-100 text-blue-800 border-blue-200";
       case "user":
-        return "bg-gray-100 text-gray-800 border-gray-200";
+        return "bg-green-100 text-green-800 border-green-200";
       default:
-        return "bg-purple-100 text-purple-800 border-purple-200";
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
 
@@ -82,8 +94,6 @@ export function TestUsers() {
         return "Supervisor";
       case "user":
         return "Usuario";
-      case "operator":
-        return "Operador";
       default:
         return role;
     }
@@ -91,32 +101,24 @@ export function TestUsers() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Cargando usuarios de prueba...</p>
-          </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+      <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Users className="h-8 w-8 text-blue-600 mr-2" />
-            <h1 className="text-3xl font-bold">Usuarios de Prueba</h1>
-          </div>
+          <h1 className="text-4xl font-bold text-primary mb-2">Usuarios de Prueba</h1>
           <p className="text-muted-foreground text-lg">
-            Selecciona un usuario para probar diferentes roles y permisos del sistema
+            Selecciona un usuario para probar diferentes roles del sistema
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {testUsers?.map((user: any) => (
+          {testUsers.map((user) => (
             <Card 
               key={user.id}
               className="hover:shadow-lg transition-shadow duration-200 border-2"
