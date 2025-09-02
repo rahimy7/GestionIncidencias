@@ -1,3 +1,4 @@
+// client/src/App.tsx - Agregar la ruta /centers/new
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -14,6 +15,9 @@ import { ManagerDashboard } from "@/pages/ManagerDashboard";
 import { AdminDashboard } from "@/pages/AdminDashboard";
 import { TestUsers } from "@/pages/TestUsers";
 import { NewIncident } from "@/pages/NewIncident";
+import { CreateCenter } from "@/pages/CreateCenter"; 
+import { CreateUser } from "./pages/CreateUser";
+import { ManageUsers } from "./pages/ManageUsers";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -46,8 +50,11 @@ function Router() {
           <Route path="/dashboard/user" component={UserDashboard} />
           <Route path="/dashboard/manager" component={ManagerDashboard} />
           <Route path="/dashboard/admin" component={AdminDashboard} />
+          <Route path="/users" component={ManageUsers} />
+<Route path="/users/new" component={CreateUser} />
           <Route path="/incidents" component={Incidents} />
-           <Route path="/incidents/new" component={NewIncident} />
+          <Route path="/incidents/new" component={NewIncident} />
+          <Route path="/centers/new" component={CreateCenter} />
           <Route path="/reports" component={Reports} />
         </>
       )}

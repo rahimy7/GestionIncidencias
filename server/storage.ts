@@ -74,9 +74,19 @@ export interface IStorage {
 
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(userData: CreateUser): Promise<User>;
+   getCenters(): Promise<Center[]>;
+  createCenter(center: InsertCenter): Promise<Center>;
+  getCenterByCode(code: string): Promise<Center | undefined>;
+  
+  // Users operations  
+  getUsers(): Promise<User[]>;
 
   // Test users for development
   getTestUsers(): Promise<User[]>;
+
+  getUsers(): Promise<User[]>;
+getCenterByCode(code: string): Promise<Center | undefined>;
+getTestUsers(): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -558,6 +568,17 @@ export class DatabaseStorage implements IStorage {
     return newHistory;
   }
 
+  // Agregar estos métodos a server/storage.ts en la clase DatabaseStorage
+
+  async getCenterByCode(code: string): Promise<Center | undefined> {
+    const [center] = await db.select().from(centers).where(eq(centers.code, code.toUpperCase()));
+    return center;
+  }
+
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(users.firstName, users.lastName);
+  }
+
   async getIncidentHistory(incidentId: string): Promise<(IncidentHistory & { user: User })[]> {
     const result = await db
       .select()
@@ -592,6 +613,7 @@ async createUser(userData: CreateUser): Promise<User> {
   const [user] = await db.insert(users).values(userData).returning();
   return user;
 }
+
 }
 
 export const storage = new DatabaseStorage();

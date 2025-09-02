@@ -15,6 +15,7 @@ import {
   insertIncidentParticipantSchema,
 } from "@shared/schema";
 import { z } from "zod";
+import { hashPassword } from './auth';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes - JWT instead of Replit
@@ -305,6 +306,107 @@ app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
     } catch (error) {
       console.error("Error fetching incident types:", error);
       res.status(500).json({ message: "Failed to fetch incident types" });
+    }
+  });
+  // Agregar estas rutas en server/routes.ts después de la línea con los endpoints de centers
+
+  // Crear centro (POST)
+  app.post("/api/centers", isAuthenticated, async (req: any, res) => {
+    try {
+      const { name, code, address, managerId } = req.body;
+      
+      // Validar datos requeridos
+      if (!name || !code || !address) {
+        return res.status(400).json({ 
+          message: "Nombre, código y dirección son requeridos" 
+        });
+      }
+
+      // Verificar si el código ya existe
+      const existingCenter = await storage.getCenterByCode(code);
+      if (existingCenter) {
+        return res.status(400).json({ 
+          message: "El código de centro ya existe" 
+        });
+      }
+
+      const centerData = {
+        name,
+        code: code.toUpperCase(),
+        address,
+        managerId: managerId || null
+      };
+
+      const newCenter = await storage.createCenter(centerData);
+      res.status(201).json(newCenter);
+    } catch (error) {
+      console.error("Error creating center:", error);
+      res.status(500).json({ message: "Error al crear el centro" });
+    }
+  });
+
+  // Obtener usuarios (para el select de managers)
+  app.get("/api/users", isAuthenticated, async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Agregar estos endpoints al final de server/routes.ts, antes de "const httpServer = createServer(app);"
+
+  // Obtener todos los usuarios (para gestión de usuarios)
+  app.get("/api/users", isAuthenticated, async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Crear nuevo usuario
+app.post("/api/users", isAuthenticated, async (req: any, res) => {
+  try {
+    const userData = req.body;
+    
+    const existingUser = await storage.getUserByEmail(userData.email);
+    if (existingUser) {
+      return res.status(400).json({ 
+        message: "El email ya está en uso" 
+      });
+    }
+
+    const { hashPassword } = await import('./auth.js');
+    const hashedPassword = await hashPassword(userData.password);
+    const userDataWithHashedPassword = {
+      ...userData,
+      password: hashedPassword,
+      centerId: userData.centerId || null
+    };
+
+    const newUser = await storage.createUser(userDataWithHashedPassword);
+    
+    const { password, ...userResponse } = newUser;
+    res.status(201).json(userResponse);
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).json({ message: "Error al crear el usuario" });
+  }
+});
+
+  // Obtener usuarios de prueba (para página TestUsers)
+  app.get("/api/test-users", async (req, res) => {
+    try {
+      const testUsers = await storage.getTestUsers();
+      res.json(testUsers);
+    } catch (error) {
+      console.error("Error fetching test users:", error);
+      res.status(500).json({ message: "Failed to fetch test users" });
     }
   });
 
