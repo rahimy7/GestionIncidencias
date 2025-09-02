@@ -129,8 +129,10 @@ app.get('/api/incidents/my', isAuthenticated, async (req: any, res) => {
 app.get('/api/incidents/center/:centerId?', isAuthenticated, async (req: any, res) => {
   try {
     const centerId = req.params.centerId;
-    // FIX: usar req.user.id en lugar de req.user.claims.sub
-    const userId = req.user.id; 
+    const userId = req.user.id;
+    // Nuevo: parámetros de paginación
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = parseInt(req.query.offset) || 0;
     const incidents = await storage.getIncidentsByCenter(centerId, userId);
     res.json(incidents);
   } catch (error) {
@@ -356,6 +358,94 @@ app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
     }
   });
 
+  app.get("/api/users/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUserRole = req.user.role;
+    
+    // Solo admins o el mismo usuario pueden ver detalles
+    if (requestingUserRole !== 'admin' && req.user.id !== id) {
+      return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    const user = await storage.getUser(id);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    res.status(500).json({ message: "Error al obtener usuario" });
+  }
+});
+
+app.put("/api/users/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUserRole = req.user.role;
+    
+    // Solo admins pueden editar usuarios
+    if (requestingUserRole !== 'admin') {
+      return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    const updates = req.body;
+    
+    // Si se actualiza la contraseña, hashearla
+    if (updates.password) {
+      updates.password = await hashPassword(updates.password);
+    }
+
+    const updatedUser = await storage.updateUser(id, updates);
+    
+    // No devolver la contraseña
+    const { password, ...userWithoutPassword } = updatedUser;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Error al actualizar usuario" });
+  }
+});
+
+app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUserRole = req.user.role;
+    const requestingUserId = req.user.id;
+    
+    // Solo admins pueden eliminar usuarios
+    if (requestingUserRole !== 'admin') {
+      return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    // No permitir que se eliminen a sí mismos
+    if (requestingUserId === id) {
+      return res.status(400).json({ message: "No puedes eliminarte a ti mismo" });
+    }
+
+    const user = await storage.getUser(id);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Verificar si el usuario tiene incidencias asociadas
+    const userIncidents = await storage.getIncidentsByReporter(id);
+    const assignedIncidents = await storage.getIncidentsByAssignee(id);
+    
+    if (userIncidents.length > 0 || assignedIncidents.length > 0) {
+      return res.status(400).json({ 
+        message: "No se puede eliminar el usuario porque tiene incidencias asociadas" 
+      });
+    }
+
+    await storage.deleteUser(id);
+    res.json({ message: "Usuario eliminado correctamente" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ message: "Error al eliminar usuario" });
+  }
+});
+
   // Agregar estos endpoints al final de server/routes.ts, antes de "const httpServer = createServer(app);"
 
   // Obtener todos los usuarios (para gestión de usuarios)
@@ -409,6 +499,15 @@ app.post("/api/users", isAuthenticated, async (req: any, res) => {
       res.status(500).json({ message: "Failed to fetch test users" });
     }
   });
+
+  app.delete('/api/centers/:id', isAuthenticated, async (req, res) => {
+  try {
+    await storage.deleteCenter(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar centro" });
+  }
+});
 
   const httpServer = createServer(app);
   return httpServer;

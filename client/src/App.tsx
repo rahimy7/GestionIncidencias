@@ -18,6 +18,7 @@ import { NewIncident } from "@/pages/NewIncident";
 import { CreateCenter } from "@/pages/CreateCenter"; 
 import { CreateUser } from "./pages/CreateUser";
 import { ManageUsers } from "./pages/ManageUsers";
+import { ManageCenters } from "./pages/ManageCenters";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -51,9 +52,10 @@ function Router() {
           <Route path="/dashboard/manager" component={ManagerDashboard} />
           <Route path="/dashboard/admin" component={AdminDashboard} />
           <Route path="/users" component={ManageUsers} />
-<Route path="/users/new" component={CreateUser} />
+          <Route path="/users/new" component={CreateUser} />
           <Route path="/incidents" component={Incidents} />
           <Route path="/incidents/new" component={NewIncident} />
+          <Route path="/centers" component={ManageCenters} />
           <Route path="/centers/new" component={CreateCenter} />
           <Route path="/reports" component={Reports} />
         </>

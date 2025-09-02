@@ -60,19 +60,33 @@ export const actionStatusEnum = pgEnum("action_status", [
 ]);
 
 // Users table
-export const users = pgTable("users", {
+export const users = pgTable("users", (): {
+  id: ReturnType<typeof varchar>;
+  email: ReturnType<typeof varchar>;
+  password: ReturnType<typeof varchar>;
+  firstName: ReturnType<typeof varchar>;
+  lastName: ReturnType<typeof varchar>;
+  profileImageUrl: ReturnType<typeof varchar>;
+  role: ReturnType<typeof userRoleEnum>;
+  department: ReturnType<typeof varchar>;
+  location: ReturnType<typeof varchar>;
+  centerId: ReturnType<typeof uuid>;
+  createdAt: ReturnType<typeof timestamp>;
+  updatedAt: ReturnType<typeof timestamp>;
+} => ({
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique().notNull(),
   password: varchar("password"),
-  firstName: varchar("first_name"), // snake_case en DB
-  lastName: varchar("last_name"),   // snake_case en DB
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").default("user").notNull(),
   department: varchar("department"),
   location: varchar("location"),
+  centerId: uuid("center_id").references(() => centers.id), // <-- NUEVO CAMPO
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}));
 
 // Centers/Stores table
 export const centers = pgTable("centers", {
@@ -260,6 +274,7 @@ export const upsertUserSchema = createInsertSchema(users).pick({
   role: true,
   department: true,
   location: true,
+  centerId: true, // <-- AGREGAR AQUÍ
 });
 
 export const insertCenterSchema = createInsertSchema(centers).omit({
@@ -330,4 +345,5 @@ export type CreateUser = {
   role?: "user" | "manager" | "department" | "supervisor" | "admin";
   department?: string;
   location?: string;
+  centerId?: string; // <-- AGREGAR AQUÍ
 };

@@ -28,7 +28,7 @@ export function AdminDashboard() {
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   
   // Obtener estadísticas globales
-  const { data: globalStats = {}, isLoading: globalLoading } = useQuery({
+  const { data: globalStats = {} as GlobalStats, isLoading: globalLoading } = useQuery<GlobalStats>({
     queryKey: ['/api/dashboard/global-stats'],
     enabled: !!user,
   });
@@ -39,14 +39,26 @@ export function AdminDashboard() {
     enabled: !!user,
   });
 
+  // Cambia la query para enviar un parámetro de límite
+  const INCIDENTS_LIMIT = 10;
+
   // Obtener incidencias del centro seleccionado
-  const { data: centerIncidents, isLoading: incidentsLoading } = useQuery({
-    queryKey: ['/api/incidents/center', selectedCenter],
+  const { data: centerIncidents = [], isLoading: incidentsLoading } = useQuery<any[]>({
+    queryKey: ['/api/incidents/center', selectedCenter, INCIDENTS_LIMIT],
+    queryFn: async () => {
+      if (!selectedCenter) return [];
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/incidents/center/${selectedCenter}?limit=${INCIDENTS_LIMIT}&offset=0`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Error al cargar incidencias');
+      return response.json();
+    },
     enabled: !!selectedCenter,
   });
 
   // Obtener estadísticas del centro seleccionado
-  const { data: centerStats = {}, isLoading: centerStatsLoading } = useQuery({
+  const { data: centerStats = {} as CenterStats, isLoading: centerStatsLoading } = useQuery<CenterStats>({
     queryKey: ['/api/dashboard/center-stats', selectedCenter],
     enabled: !!selectedCenter,
   });
@@ -472,3 +484,24 @@ export function AdminDashboard() {
     </Layout>
   );
 }
+
+// 1. Define los tipos arriba del componente
+type GlobalStats = {
+  totalIncidents: number;
+  inProgress: number;
+  critical: number;
+  activeCenters: number;
+  completed: number;
+  criticalIncidents: any[];
+  topCenters: any[];
+  dailyAverage: number;
+  avgResolutionTime: number | string;
+  globalResolutionRate: number;
+};
+
+type CenterStats = {
+  totalIncidents: number;
+  inProgress: number;
+  critical: number;
+  resolutionRate: number;
+};

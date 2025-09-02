@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Users, Plus, Search, Crown, Shield, User as UserIcon, Trash2, Edit } from "lucide-react";
 import { Link } from "wouter";
+// Update the import path to match the actual location of use-toast
+import { Toast } from "../components/ui/toast";
+import { EditUserDialog } from "@/components/EditUserDialog"; // Agrega este import
 
 interface User {
   id: string;
@@ -22,6 +25,8 @@ interface User {
 
 export function ManageUsers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
@@ -38,6 +43,37 @@ export function ManageUsers() {
       }
       
       return response.json();
+    },
+  });
+
+  // Mutación para eliminar usuario
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Error al eliminar usuario");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      Toast({
+        title: "Usuario eliminado",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      setDeletingUserId(null);
+    },
+    onError: (error: any) => {
+      Toast({
+        title: "Error al eliminar",
+        variant: "destructive",
+      });
     },
   });
 
@@ -206,24 +242,41 @@ export function ManageUsers() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex items-center gap-2"
-                        >
-                          <Edit className="h-4 w-4" />
-                          Editar
-                        </Button>
+                        {/* Reemplaza el botón Editar por el diálogo */}
+                        <EditUserDialog user={user} />
                         <Button
                           variant="outline"
                           size="sm"
                           className="flex items-center gap-2 text-red-600 hover:text-red-700"
+                          onClick={() => setDeletingUserId(user.id)}
+                          disabled={deleteUserMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4" />
                           Eliminar
                         </Button>
                       </div>
                     </div>
+                    {/* Confirmación de eliminación */}
+                    {deletingUserId === user.id && (
+                      <div className="mt-2 flex gap-2">
+                        <span>¿Seguro que deseas eliminar este usuario?</span>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => deleteUserMutation.mutate(user.id)}
+                          disabled={deleteUserMutation.isPending}
+                        >
+                          Sí, eliminar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeletingUserId(null)}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
