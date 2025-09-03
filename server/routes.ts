@@ -1,6 +1,6 @@
 // server/routes.ts - Correcciones necesarias
 
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { login, register, isAuthenticated } from "./auth";
@@ -16,6 +16,48 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { hashPassword } from './auth';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs/promises';
+
+interface RequestWithFile extends Express.Request {
+  file?: Express.Multer.File;
+  user?: any;
+  body: any;
+}
+// Configuración de multer para uploads
+
+const multerStorage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    } catch (error) {
+      cb(error as Error, uploadDir);
+    }
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `${timestamp}-${originalName}`);
+  }
+});
+
+const upload = multer({
+  storage: multerStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de archivo no permitido'));
+    }
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes - JWT instead of Replit
@@ -488,6 +530,45 @@ app.post("/api/users", isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Error al crear el usuario" });
   }
 });
+
+// Endpoint para subir archivos
+app.post('/api/upload', isAuthenticated, upload.single('file'), async (req: RequestWithFile, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No se proporcionó archivo' });
+    }
+
+    const { incidentId } = req.body;
+    if (!incidentId) {
+      return res.status(400).json({ message: 'ID de incidencia requerido' });
+    }
+
+    // Construir URL del archivo
+    const fileUrl = `/uploads/${req.file.filename}`;
+    
+    // Guardar referencia del archivo en la base de datos si tienes tabla de attachments
+    // await storage.createAttachment({
+    //   incidentId,
+    //   filename: req.file.filename,
+    //   originalName: req.file.originalname,
+    //   mimetype: req.file.mimetype,
+    //   size: req.file.size,
+    //   url: fileUrl
+    // });
+
+    res.json({
+      message: 'Archivo subido exitosamente',
+      url: fileUrl,
+      filename: req.file.filename
+    });
+
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+});
+
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // Obtener usuarios de prueba (para página TestUsers)
   app.get("/api/test-users", async (req, res) => {

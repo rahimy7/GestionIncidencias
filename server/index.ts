@@ -1,11 +1,40 @@
+// server/index.ts - ADD COMPRESSION AND CACHING
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 
+// Add compression middleware
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+}));
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for Vite development
+}));
+
+// Parse JSON with size limit
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+
+// Cache static assets
+app.use((req, res, next) => {
+  if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year
+  }
+  next();
+});
+
+// Add response compression and timing
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -14,6 +43,14 @@ app.use((req, res, next) => {
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
+    
+    // Add caching headers for API responses
+    if (path.startsWith("/api") && req.method === 'GET') {
+      if (path.includes('/dashboard/') || path.includes('/centers')) {
+        res.setHeader('Cache-Control', 'private, max-age=300'); // 5 minutes
+      }
+    }
+    
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
@@ -21,15 +58,26 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      
+      // Only log response body for errors or if very long response time
+      if (res.statusCode >= 400 || duration > 1000) {
+        if (capturedJsonResponse) {
+          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        }
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (logLine.length > 100) {
+        logLine = logLine.slice(0, 99) + "…";
       }
 
-      log(logLine);
+      // Color code by performance
+      if (duration > 1000) {
+        log(`🔴 ${logLine}`); // Red for slow
+      } else if (duration > 500) {
+        log(`🟡 ${logLine}`); // Yellow for medium
+      } else {
+        log(`🟢 ${logLine}`); // Green for fast
+      }
     }
   });
 
@@ -42,44 +90,40 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
+    
+    log(`❌ Error ${status}: ${message}`);
     res.status(status).json({ message });
-    throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-const port = parseInt(process.env.PORT || "3000", 10);
+  const port = parseInt(process.env.PORT || "3000", 10);
+  const host = "0.0.0.0"; // Keep for deployment compatibility
 
-// Usa HOST=127.0.0.1 en desarrollo Windows (o deja vacío para que use loopback)
-// Evita 0.0.0.0 y "::" para no tener sorpresas en Windows
-const rawHost = (process.env.HOST || "").trim().toLowerCase();
-const host =
-  rawHost && !["0.0.0.0", "::"].includes(rawHost) ? rawHost : "127.0.0.1";
+  server.listen(port, host, () => {
+    log(`✅ Server running on http://${host}:${port}`);
+    log(`📊 Dashboard: http://localhost:${port}`);
+  });
 
-server.listen(port, "0.0.0.0", () => {
-  log(`✅ Servidor corriendo en http://0.0.0.0:${port}`);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    log('📤 SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      log('👋 Server closed');
+      process.exit(0);
+    });
+  });
 
-// Manejo de errores opcional
-server.on("error", (err: any) => {
-  if (err.code === "EADDRINUSE") {
-    log(`❌ El puerto ${port} ya está en uso`);
-  } else {
-    log(`❌ Error al iniciar: ${err.message}`);
-  }
-});
-
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      log(`❌ Port ${port} already in use`);
+    } else {
+      log(`❌ Server error: ${err.message}`);
+    }
+  });
 })();
+
