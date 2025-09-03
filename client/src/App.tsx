@@ -14,7 +14,7 @@ import { UserDashboard } from "@/pages/UserDashboard";
 import { ManagerDashboard } from "@/pages/ManagerDashboard";
 import { AdminDashboard } from "@/pages/AdminDashboard";
 import { TestUsers } from "@/pages/TestUsers";
-import { NewIncident } from "@/pages/NewIncident";
+import { CreateIncident } from "@/pages/CreateIncident";
 import { CreateCenter } from "@/pages/CreateCenter"; 
 import { CreateUser } from "./pages/CreateUser";
 import { ManageUsers } from "./pages/ManageUsers";
@@ -54,7 +54,7 @@ function Router() {
           <Route path="/users" component={ManageUsers} />
           <Route path="/users/new" component={CreateUser} />
           <Route path="/incidents" component={Incidents} />
-          <Route path="/incidents/new" component={NewIncident} />
+          <Route path="/incidents/new" component={CreateIncident} />
           <Route path="/centers" component={ManageCenters} />
           <Route path="/centers/new" component={CreateCenter} />
           <Route path="/reports" component={Reports} />
