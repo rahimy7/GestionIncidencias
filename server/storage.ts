@@ -24,7 +24,9 @@ import {
   CreateUser,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, count, sql, avg } from "drizzle-orm";
+import { eq, desc, and, or, count, sql, avg, } from "drizzle-orm";
+const reporterUser = alias(users, 'reporterUser');
+const assigneeUser = alias(users, 'assigneeUser');
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -129,96 +131,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Incidents operations
-  async getIncidents(filters?: {
-    status?: string;
-    priority?: string;
-    centerId?: string;
-    assigneeId?: string;
-    reporterId?: string;
-  }): Promise<IncidentWithDetails[]> {
-    let query = db
-      .select()
-      .from(incidents)
-      .leftJoin(users, eq(incidents.reporterId, users.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
-      .orderBy(desc(incidents.createdAt));
 
-    if (filters) {
-      const conditions = [];
-      if (filters.status) conditions.push(eq(incidents.status, filters.status as any));
-      if (filters.priority) conditions.push(eq(incidents.priority, filters.priority as any));
-      if (filters.centerId) conditions.push(eq(incidents.centerId, filters.centerId));
-      if (filters.assigneeId) conditions.push(eq(incidents.assigneeId, filters.assigneeId));
-      if (filters.reporterId) conditions.push(eq(incidents.reporterId, filters.reporterId));
-      
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions)) as any;
-      }
-    }
-
-    const result = await query;
-
-    // Transform the result to include related data
-    const incidentsMap = new Map<string, any>();
-    
-    for (const row of result) {
-      const incident = row.incidents;
-      if (!incidentsMap.has(incident.id)) {
-        incidentsMap.set(incident.id, {
-          ...incident,
-          reporter: row.users,
-          center: row.centers,
-          type: row.incident_types,
-          participants: [],
-          actionPlans: [],
-          history: []
-        });
-      }
-    }
-
-    // Fetch participants, action plans, and history for each incident
-    for (const [incidentId, incident] of Array.from(incidentsMap.entries())) {
-      // Get participants
-      const participantsResult = await db
-        .select()
-        .from(incidentParticipants)
-        .leftJoin(users, eq(incidentParticipants.userId, users.id))
-        .where(eq(incidentParticipants.incidentId, incidentId));
-
-      incident.participants = participantsResult.map(row => ({
-        ...row.incident_participants,
-        user: row.users
-      }));
-
-      // Get action plans
-      const actionPlansResult = await db
-        .select()
-        .from(actionPlans)
-        .leftJoin(users, eq(actionPlans.assigneeId, users.id))
-        .where(eq(actionPlans.incidentId, incidentId));
-
-      incident.actionPlans = actionPlansResult.map(row => ({
-        ...row.action_plans,
-        assignee: row.users
-      }));
-
-      // Get history
-      const historyResult = await db
-        .select()
-        .from(incidentHistory)
-        .leftJoin(users, eq(incidentHistory.userId, users.id))
-        .where(eq(incidentHistory.incidentId, incidentId))
-        .orderBy(desc(incidentHistory.createdAt));
-
-      incident.history = historyResult.map(row => ({
-        ...row.incident_history,
-        user: row.users
-      }));
-    }
-
-    return Array.from(incidentsMap.values());
-  }
 
   async getIncidentsByAssignee(userId: string): Promise<(Incident & { center?: Center; reporter?: User })[]> {
   const result = await db
@@ -380,49 +293,9 @@ async getDashboardStats(userId?: string) {
 }
 
 
-async getCenterStats(centerId?: string, userId?: string) {
-  if (!centerId) return {};
 
-  const [centerStats] = await db
-    .select({
-      total: count(),
-      inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
-      critical: count(sql`CASE WHEN priority = 'critical' THEN 1 END`),
-      completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`)
-    })
-    .from(incidents)
-    .where(eq(incidents.centerId, centerId));
-
-  return {
-    totalIncidents: centerStats.total,
-    inProgress: centerStats.inProgress,
-    critical: centerStats.critical,
-    completed: centerStats.completed,
-    resolutionRate: centerStats.total > 0 ? 
-      Math.round((centerStats.completed / centerStats.total) * 100) : 0
-  };
-}
   // New methods for role-based dashboards
-  async getGlobalStats() {
-    const totalIncidents = await db.select({ count: count() }).from(incidents);
-    const inProgress = await db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'in_progress'));
-    const critical = await db.select({ count: count() }).from(incidents).where(eq(incidents.priority, 'critical'));
-    const completed = await db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'completed'));
-    const activeCenters = await db.select({ count: count() }).from(centers);
 
-    return {
-      totalIncidents: totalIncidents[0].count,
-      inProgress: inProgress[0].count,
-      critical: critical[0].count,
-      completed: completed[0].count,
-      activeCenters: activeCenters[0].count,
-      dailyAverage: 0,
-      avgResolutionTime: 5,
-      globalResolutionRate: 85,
-      criticalIncidents: [],
-      topCenters: []
-    };
-  }
 
   async getIncidentsByReporter(userId: string): Promise<(Incident & { center?: Center })[]> {
     const result = await db
@@ -571,6 +444,265 @@ async createUser(userData: CreateUser): Promise<User> {
 async deleteCenter(centerId: string) {
   await db.delete(centers).where(eq(centers.id, centerId));
 }
+
+// server/storage.ts - Agregar estos métodos a la clase Database
+
+// Método mejorado para estadísticas globales
+async getGlobalStats() {
+  try {
+    // Estadísticas básicas de incidencias
+    const [incidentStats] = await db
+      .select({
+        total: count(),
+        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
+        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
+        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
+        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
+        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
+        pendingApproval: count(sql`CASE WHEN status = 'pending_approval' THEN 1 END`),
+      })
+      .from(incidents);
+
+    // Estadísticas de centros
+    const [centerStats] = await db
+      .select({
+        totalCenters: count(),
+      })
+      .from(centers);
+
+    // Estadísticas de usuarios
+    const [userStats] = await db
+      .select({
+        totalUsers: count(),
+      })
+      .from(users);
+
+    // Centro más activo
+    const mostActiveCenter = await db
+      .select({
+        centerId: incidents.centerId,
+        centerName: centers.name,
+        incidentCount: count(),
+      })
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .groupBy(incidents.centerId, centers.name)
+      .orderBy(desc(count()))
+      .limit(1);
+
+    // Incidencias recientes (últimas 10)
+    const recentIncidents = await db
+      .select({
+        id: incidents.id,
+        title: incidents.title,
+        status: incidents.status,
+        priority: incidents.priority,
+        createdAt: incidents.createdAt,
+        center: {
+          id: centers.id,
+          name: centers.name,
+        }
+      })
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .orderBy(desc(incidents.createdAt))
+      .limit(10);
+
+    // Calcular promedio diario (últimos 30 días)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const [recentIncidentsCount] = await db
+      .select({
+        count: count(),
+      })
+      .from(incidents)
+      .where(sql`created_at >= ${thirtyDaysAgo}`);
+
+    const dailyAverage = Math.round(recentIncidentsCount.count / 30 * 10) / 10;
+
+    // Tiempo promedio de resolución
+    const [avgResolution] = await db
+      .select({
+        avgDays: avg(sql`EXTRACT(day FROM actual_resolution_date - created_at)`),
+      })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.status, 'completed'),
+          isNotNull(incidents.actualResolutionDate)
+        )
+      );
+
+    const avgResolutionTime = avgResolution.avgDays 
+      ? `${Math.round(Number(avgResolution.avgDays) * 10) / 10} días`
+      : 'N/A';
+
+    // Tasa de resolución global
+    const globalResolutionRate = incidentStats.total > 0 
+      ? Math.round((incidentStats.completed / incidentStats.total) * 100)
+      : 0;
+
+    return {
+      totalIncidents: incidentStats.total,
+      inProgress: incidentStats.inProgress,
+      completed: incidentStats.completed,
+      critical: incidentStats.critical,
+      reported: incidentStats.reported,
+      assigned: incidentStats.assigned,
+      pendingApproval: incidentStats.pendingApproval,
+      totalCenters: centerStats.totalCenters,
+      totalUsers: userStats.totalUsers,
+      dailyAverage,
+      avgResolutionTime,
+      globalResolutionRate,
+      mostActiveCenterName: mostActiveCenter[0]?.centerName || 'N/A',
+      recentIncidents: recentIncidents.map(incident => ({
+        ...incident,
+        createdAt: incident.createdAt.toISOString(),
+      })),
+    };
+  } catch (error) {
+    console.error('Error getting global stats:', error);
+    throw error;
+  }
+}
+
+// Método mejorado para obtener incidencias con filtros
+async getIncidents(filters: any = {}, limit: number = 50, offset: number = 0): Promise<(Incident & { center?: Center, reporter?: User, assignee?: User })[]> {
+  try {
+    let query = db
+      .select({
+        incident: incidents,
+        center: centers,
+        reporter: {
+          id: reporterUser.id,
+          name: reporterUser.name,
+          email: reporterUser.email,
+        },
+        assignee: {
+          id: assigneeUser.id,
+          name: assigneeUser.name,
+          email: assigneeUser.email,
+        }
+      })
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(reporterUser, eq(incidents.reporterId, reporterUser.id))
+      .leftJoin(assigneeUser, eq(incidents.assigneeId, assigneeUser.id))
+      .limit(limit)
+      .offset(offset)
+      .orderBy(desc(incidents.createdAt));
+
+    // Aplicar filtros dinámicamente
+    const conditions: any[] = [];
+    
+    if (filters.status) {
+      conditions.push(eq(incidents.status, filters.status));
+    }
+    
+    if (filters.priority) {
+      conditions.push(eq(incidents.priority, filters.priority));
+    }
+    
+    if (filters.centerId) {
+      conditions.push(eq(incidents.centerId, filters.centerId));
+    }
+    
+    if (filters.assigneeId) {
+      conditions.push(eq(incidents.assigneeId, filters.assigneeId));
+    }
+    
+    if (filters.reporterId) {
+      conditions.push(eq(incidents.reporterId, filters.reporterId));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    const results = await query;
+
+    return results.map(row => ({
+      ...row.incident,
+      center: row.center || undefined,
+      reporter: row.reporter || undefined,
+      assignee: row.assignee || undefined,
+    }));
+  } catch (error) {
+    console.error('Error getting incidents:', error);
+    throw error;
+  }
+}
+
+// Método para obtener datos de tendencias
+async getTrendData() {
+  try {
+    // Obtener datos de los últimos 6 meses
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const monthlyData = await db
+      .select({
+        month: sql<string>`TO_CHAR(created_at, 'Mon')`,
+        monthNum: sql<number>`EXTRACT(month FROM created_at)`,
+        year: sql<number>`EXTRACT(year FROM created_at)`,
+        incidents: count(),
+        resolved: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
+      })
+      .from(incidents)
+      .where(sql`created_at >= ${sixMonthsAgo}`)
+      .groupBy(
+        sql`EXTRACT(year FROM created_at)`,
+        sql`EXTRACT(month FROM created_at)`,
+        sql`TO_CHAR(created_at, 'Mon')`
+      )
+      .orderBy(
+        sql`EXTRACT(year FROM created_at)`,
+        sql`EXTRACT(month FROM created_at)`
+      );
+
+    return monthlyData;
+  } catch (error) {
+    console.error('Error getting trend data:', error);
+    throw error;
+  }
+}
+
+// Método mejorado para estadísticas de centro
+async getCenterStats(centerId?: string, userId?: string) {
+  if (!centerId) return {};
+
+  try {
+    const [centerStats] = await db
+      .select({
+        total: count(),
+        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
+        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
+        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
+        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
+        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
+      })
+      .from(incidents)
+      .where(eq(incidents.centerId, centerId));
+
+    return {
+      totalIncidents: centerStats.total,
+      inProgress: centerStats.inProgress,
+      critical: centerStats.critical,
+      completed: centerStats.completed,
+      reported: centerStats.reported,
+      assigned: centerStats.assigned,
+      resolutionRate: centerStats.total > 0 ? 
+        Math.round((centerStats.completed / centerStats.total) * 100) : 0
+    };
+  } catch (error) {
+    console.error('Error getting center stats:', error);
+    throw error;
+  }
+}
+
+
 }
 
 export const storage = new DatabaseStorage();

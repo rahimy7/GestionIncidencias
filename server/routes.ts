@@ -590,6 +590,64 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
   }
 });
 
+// server/routes.ts - Agregar estos endpoints después de los existentes
+
+// Endpoint para estadísticas globales (Admin)
+app.get('/api/dashboard/global-stats', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Verificar que el usuario sea admin
+    const user = await storage.getUser(userId);
+    if (user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+
+    const globalStats = await storage.getGlobalStats();
+    res.json(globalStats);
+  } catch (error) {
+    console.error("Error fetching global stats:", error);
+    res.status(500).json({ message: "Failed to fetch global stats" });
+  }
+});
+
+// Endpoint para obtener incidencias con filtros avanzados
+app.get('/api/incidents/filtered', isAuthenticated, async (req: any, res) => {
+  try {
+    const { status, priority, centerId, limit = 50, offset = 0 } = req.query;
+    const userId = req.user.id;
+    
+    const filters: any = {};
+    if (status && status !== 'critical') filters.status = status; // 'critical' es prioridad, no estado
+    if (priority || status === 'critical') filters.priority = status === 'critical' ? 'critical' : priority;
+    if (centerId) filters.centerId = centerId;
+
+    const incidents = await storage.getIncidents(filters, parseInt(limit), parseInt(offset));
+    res.json(incidents);
+  } catch (error) {
+    console.error("Error fetching filtered incidents:", error);
+    res.status(500).json({ message: "Failed to fetch incidents" });
+  }
+});
+
+// Endpoint para estadísticas de tendencias
+app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+
+    const trends = await storage.getTrendData();
+    res.json(trends);
+  } catch (error) {
+    console.error("Error fetching trends:", error);
+    res.status(500).json({ message: "Failed to fetch trends" });
+  }
+});
+
   const httpServer = createServer(app);
   return httpServer;
 }
