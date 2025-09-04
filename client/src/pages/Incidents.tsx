@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/Layout";
-import { IncidentList } from "@/components/IncidentList";
+import { IncidentsList } from "@/components/IncidentList";
 
 export default function Incidents() {
   const { toast } = useToast();
@@ -37,7 +37,9 @@ export default function Incidents() {
           <h1 className="text-3xl font-bold text-foreground">Gestión de Incidencias</h1>
           <p className="text-muted-foreground">Administra y da seguimiento a todas las incidencias</p>
         </div>
-        <IncidentList />
+        <IncidentsList onBack={function (): void {
+          throw new Error("Function not implemented.");
+        } } />
       </div>
     </Layout>
   );

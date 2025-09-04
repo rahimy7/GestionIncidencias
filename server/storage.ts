@@ -25,10 +25,18 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
+import {  asc, gte, lte } from 'drizzle-orm';
 import { alias } from "drizzle-orm/pg-core";
 //import { alias } from "drizzle-orm/mysql-core";
 const reporterUser = alias(users, 'reporterUser');
 const assigneeUser = alias(users, 'assigneeUser');
+
+type UserBasic = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+};
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -768,6 +776,193 @@ async getCenterStats(centerId?: string, userId?: string) {
     throw error;
   }
 }
+// server/storage.ts - Método corregido
+async getIncidentsWithAdvancedFilters(filters: any = {}, limit: number = 50, offset: number = 0): Promise<any[]> {
+  try {
+    const conditions: any[] = [];
+    
+    // Filtros básicos
+    if (filters.status) conditions.push(eq(incidents.status, filters.status));
+    if (filters.priority) conditions.push(eq(incidents.priority, filters.priority));
+    if (filters.centerId) conditions.push(eq(incidents.centerId, filters.centerId));
+    if (filters.assigneeId) conditions.push(eq(incidents.assigneeId, filters.assigneeId));
+    if (filters.reporterId) conditions.push(eq(incidents.reporterId, filters.reporterId));
+
+    // Filtro por rango de fechas
+    if (filters.dateFrom) {
+      conditions.push(gte(incidents.createdAt, filters.dateFrom));
+    }
+    if (filters.dateTo) {
+      conditions.push(lte(incidents.createdAt, filters.dateTo));
+    }
+
+    // Configurar ordenamiento
+    let orderByClause;
+    if (filters.sortBy === 'priority') {
+      // Ordenar por prioridad: critical -> high -> medium -> low
+      const priorityOrder = sql`
+        CASE ${incidents.priority}
+          WHEN 'critical' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'medium' THEN 3
+          WHEN 'low' THEN 4
+          ELSE 5
+        END
+      `;
+      orderByClause = filters.sortOrder === 'asc' ? asc(priorityOrder) : desc(priorityOrder);
+    } else {
+      // Ordenar por fecha (default)
+      orderByClause = filters.sortOrder === 'asc' ? asc(incidents.createdAt) : desc(incidents.createdAt);
+    }
+
+    // Query base con campos correctos según tu schema
+    let baseQuery = db
+      .select({
+        id: incidents.id,
+        incidentNumber: incidents.incidentNumber,
+        title: incidents.title,
+        description: incidents.description,
+        status: incidents.status,
+        priority: incidents.priority,
+        centerId: incidents.centerId,
+        typeId: incidents.typeId,
+        reporterId: incidents.reporterId,
+        assigneeId: incidents.assigneeId,
+        supervisorId: incidents.supervisorId,
+        rootCause: incidents.rootCause,
+        theoreticalResolutionDate: incidents.theoreticalResolutionDate,
+        actualResolutionDate: incidents.actualResolutionDate,
+        evidenceFiles: incidents.evidenceFiles,
+        createdAt: incidents.createdAt,
+        updatedAt: incidents.updatedAt,
+        center: {
+          id: centers.id,
+          name: centers.name,
+          code: centers.code,
+          address: centers.address,
+        },
+        type: {
+          id: incidentTypes.id,
+          name: incidentTypes.name,
+        },
+        reporter: {
+          id: reporterUser.id,
+          firstName: reporterUser.firstName,
+          lastName: reporterUser.lastName,
+          email: reporterUser.email,
+        },
+        assignee: {
+          id: assigneeUser.id,
+          firstName: assigneeUser.firstName,
+          lastName: assigneeUser.lastName,
+          email: assigneeUser.email,
+        },
+      })
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .leftJoin(reporterUser, eq(incidents.reporterId, reporterUser.id))
+      .leftJoin(assigneeUser, eq(incidents.assigneeId, assigneeUser.id))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+
+    // Aplicar condiciones si existen
+    const results = conditions.length > 0 
+      ? await baseQuery.where(and(...conditions))
+      : await baseQuery;
+
+    // Filtro de búsqueda por texto
+    let filteredResults = results;
+    if (filters.search) {
+      const searchTerm = filters.search.toLowerCase();
+      filteredResults = results.filter(incident => 
+        incident.title?.toLowerCase().includes(searchTerm) ||
+        incident.description?.toLowerCase().includes(searchTerm) ||
+        incident.incidentNumber?.toLowerCase().includes(searchTerm) ||
+        incident.center?.name?.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    // Mapear resultados al formato IncidentWithDetails
+    return filteredResults.map(result => ({
+      id: result.id,
+      incidentNumber: result.incidentNumber,
+      title: result.title,
+      description: result.description,
+      status: result.status,
+      priority: result.priority,
+      centerId: result.centerId,
+      typeId: result.typeId,
+      reporterId: result.reporterId,
+      assigneeId: result.assigneeId,
+      supervisorId: result.supervisorId,
+      rootCause: result.rootCause,
+      theoreticalResolutionDate: result.theoreticalResolutionDate,
+      actualResolutionDate: result.actualResolutionDate,
+      evidenceFiles: result.evidenceFiles,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+      // Relaciones
+      reporter: result.reporter ? {
+  id: result.reporter.id!,
+  firstName: result.reporter.firstName,
+  lastName: result.reporter.lastName,
+  email: result.reporter.email,
+} as UserBasic : null as any,
+      assignee: result.assignee?.id ? {
+  id: result.assignee.id!,
+  firstName: result.assignee.firstName,
+  lastName: result.assignee.lastName,
+  email: result.assignee.email,
+} as UserBasic : undefined,
+      center: result.center as Center,
+      type: result.type as IncidentType,
+      // Campos requeridos por IncidentWithDetails pero no consultados aquí
+      supervisor: undefined,
+      participants: [],
+      actionPlans: [],
+      history: [],
+    }));
+    
+  } catch (error) {
+    console.error('Error getting incidents with advanced filters:', error);
+    throw error;
+  }
+}
+
+// Método para obtener todos los centros
+async getAllCenters(): Promise<Center[]> {
+  try {
+    const allCenters = await db
+      .select()
+      .from(centers)
+      .orderBy(asc(centers.name));
+    
+    return allCenters;
+  } catch (error) {
+    console.error('Error getting all centers:', error);
+    throw error;
+  }
+}
+
+// Método para obtener un centro específico
+async getCenter(centerId: string): Promise<Center | null> {
+  try {
+    const center = await db
+      .select()
+      .from(centers)
+      .where(eq(centers.id, centerId))
+      .limit(1);
+    
+    return center[0] || null;
+  } catch (error) {
+    console.error('Error getting center:', error);
+    throw error;
+  }
+}
+
+
 
 
 }

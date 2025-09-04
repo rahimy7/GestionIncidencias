@@ -628,28 +628,89 @@ app.get('/api/dashboard/global-stats', isAuthenticated, async (req: any, res) =>
 });
 
 // Endpoint para obtener incidencias con filtros avanzados
+
 app.get('/api/incidents/filtered', isAuthenticated, async (req: any, res) => {
   try {
-    const { status, priority, centerId, limit = 50, offset = 0 } = req.query;
+    const { 
+      status, 
+      priority, 
+      centerId, 
+      search,
+      dateFrom,
+      dateTo,
+      sortBy = 'date',
+      sortOrder = 'desc',
+      limit = 50, 
+      offset = 0 
+    } = req.query;
+    
     const userId = req.user.id;
+    const user = await storage.getUser(userId);
     
     const filters: any = {};
+    
+    // Aplicar filtros básicos
     if (status && status !== 'critical') filters.status = status;
-    if (priority || status === 'critical') filters.priority = status === 'critical' ? 'critical' : priority;
+    if (priority || status === 'critical') {
+      filters.priority = status === 'critical' ? 'critical' : priority;
+    }
     if (centerId) filters.centerId = centerId;
+    
+    // Aplicar filtros de búsqueda y fecha
+    if (search) filters.search = search;
+    if (dateFrom) filters.dateFrom = new Date(dateFrom);
+    if (dateTo) {
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999); // Final del día
+      filters.dateTo = endDate;
+    }
+    
+    // Configurar ordenamiento
+    filters.sortBy = sortBy;
+    filters.sortOrder = sortOrder;
 
-    // Remove the limit and offset parameters - getIncidents only accepts filters
-    const incidents = await storage.getIncidents(filters);
-    
-    // Apply pagination manually if needed
-    const start = parseInt(offset as string);
-    const end = start + parseInt(limit as string);
-    const paginatedIncidents = incidents.slice(start, end);
-    
-    res.json(paginatedIncidents);
+
+if (!user) {
+  return res.status(404).json({ message: "User not found" });
+}
+
+// Para managers, limitar a su centro si no son admin
+if (user.role === 'manager' && user.centerId && !filters.centerId) {
+  filters.centerId = user.centerId;
+}
+
+    const incidents = await storage.getIncidentsWithAdvancedFilters(filters, parseInt(limit), parseInt(offset));
+    res.json(incidents);
   } catch (error) {
     console.error("Error fetching filtered incidents:", error);
     res.status(500).json({ message: "Failed to fetch incidents" });
+  }
+});
+
+// Endpoint para obtener lista de centros
+app.get('/api/centers', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    let centers: { id: string; name: string; createdAt: Date | null; code: string; address: string | null; managerId: string | null; }[];
+    if (user.role === 'admin') {
+      centers = await storage.getAllCenters();
+    } else if (user.role === 'manager' && user.centerId) {
+  const userCenter = await storage.getCenter(user.centerId);
+  centers = userCenter ? [userCenter] : [];
+    } else {
+      centers = [];
+    }
+    
+    res.json(centers);
+  } catch (error) {
+    console.error("Error fetching centers:", error);
+    res.status(500).json({ message: "Failed to fetch centers" });
   }
 });
 

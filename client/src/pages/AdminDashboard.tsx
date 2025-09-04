@@ -87,21 +87,17 @@ interface IncidentsListViewProps {
 function IncidentsListView({ status, onBack }: IncidentsListViewProps) {
   const { user } = useAuth();
   
+  // FIX: Usar 'status' prop en lugar de 'filterStatus' no definido
   const { data: incidents, isLoading } = useQuery({
-    queryKey: ['/api/incidents', status],
+    queryKey: ['/api/incidents/filtered', status],
     queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      let url = '/api/incidents';
-      if (status) {
-        url += `?${status === 'critical' ? 'priority' : 'status'}=${status}`;
-      }
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Failed to load incidents');
+      const params = new URLSearchParams();
+      if (status) params.append('status', status);
+      
+      const response = await fetch(`/api/incidents/filtered?${params}`);
+      if (!response.ok) throw new Error('Error fetching incidents');
       return response.json();
-    },
-    enabled: !!user,
+    }
   });
 
   const getStatusColor = (status: string) => {
@@ -154,7 +150,7 @@ function IncidentsListView({ status, onBack }: IncidentsListViewProps) {
         </Button>
         <div>
           <h2 className="text-2xl font-bold">
-            Incidencias {status ? statusLabels[status] : 'Todas'}
+            Incidencias {status ? statusLabels[status] || status : 'Todas'}
           </h2>
           <p className="text-muted-foreground">
             {incidents?.length || 0} incidencias encontradas
@@ -201,7 +197,7 @@ function IncidentsListView({ status, onBack }: IncidentsListViewProps) {
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No hay incidencias</h3>
               <p className="text-muted-foreground">
-                No se encontraron incidencias {status ? `con estado "${statusLabels[status]}"` : ''}.
+                No se encontraron incidencias {status ? `con estado "${statusLabels[status] || status}"` : ''}.
               </p>
             </CardContent>
           </Card>
@@ -326,11 +322,12 @@ export function AdminDashboard() {
       icon: AlertCircle,
       color: "text-red-500",
       onClick: () => {
-        setFilterStatus("critical"); // Filtrar por prioridad crítica
+        setFilterStatus("critical");
         setView('incidents');
       }
     },
   ];
+
   if (view === 'incidents') {
     return (
       <Layout>
@@ -463,4 +460,3 @@ export function AdminDashboard() {
     </Layout>
   );
 }
-  
