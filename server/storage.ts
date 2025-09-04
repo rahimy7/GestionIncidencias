@@ -44,13 +44,13 @@ export interface IStorage {
   createIncidentType(type: InsertIncidentType): Promise<IncidentType>;
 
   // Incidents operations
-  getIncidents(filters?: {
-    status?: string;
-    priority?: string;
-    centerId?: string;
-    assigneeId?: string;
-    reporterId?: string;
-  }): Promise<IncidentWithDetails[]>;
+ getIncidents(filters?: {
+  status?: string;
+  priority?: string;
+  centerId?: string;
+  assigneeId?: string;
+  reporterId?: string;
+}): Promise<IncidentWithDetails[]>;
   getIncidentById(id: string): Promise<IncidentWithDetails | undefined>;
   createIncident(incident: InsertIncident): Promise<Incident>;
   updateIncident(id: string, updates: Partial<InsertIncident>): Promise<Incident>;

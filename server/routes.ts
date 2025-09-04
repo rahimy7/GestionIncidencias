@@ -611,6 +611,10 @@ app.get('/api/dashboard/global-stats', isAuthenticated, async (req: any, res) =>
     
     // Verificar que el usuario sea admin
     const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     if (user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }
@@ -630,12 +634,19 @@ app.get('/api/incidents/filtered', isAuthenticated, async (req: any, res) => {
     const userId = req.user.id;
     
     const filters: any = {};
-    if (status && status !== 'critical') filters.status = status; // 'critical' es prioridad, no estado
+    if (status && status !== 'critical') filters.status = status;
     if (priority || status === 'critical') filters.priority = status === 'critical' ? 'critical' : priority;
     if (centerId) filters.centerId = centerId;
 
-    const incidents = await storage.getIncidents(filters, parseInt(limit), parseInt(offset));
-    res.json(incidents);
+    // Remove the limit and offset parameters - getIncidents only accepts filters
+    const incidents = await storage.getIncidents(filters);
+    
+    // Apply pagination manually if needed
+    const start = parseInt(offset as string);
+    const end = start + parseInt(limit as string);
+    const paginatedIncidents = incidents.slice(start, end);
+    
+    res.json(paginatedIncidents);
   } catch (error) {
     console.error("Error fetching filtered incidents:", error);
     res.status(500).json({ message: "Failed to fetch incidents" });
@@ -647,6 +658,10 @@ app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
     
     if (user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
