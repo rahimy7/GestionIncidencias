@@ -80,16 +80,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      // FIX: Usar req.user.id en lugar de req.user.claims.sub
-      const user = await storage.getUser(req.user.id);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+// Agregar después de las rutas de auth existentes
+app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  try {
+    const user = await storage.getUser(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-  });
+    
+    res.json({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      department: user.department,
+      location: user.location
+    });
+  } catch (error) {
+    console.error('Error getting user:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+});
 
   app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });

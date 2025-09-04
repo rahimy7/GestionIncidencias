@@ -24,7 +24,9 @@ import {
   CreateUser,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, count, sql, avg, } from "drizzle-orm";
+import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+//import { alias } from "drizzle-orm/mysql-core";
 const reporterUser = alias(users, 'reporterUser');
 const assigneeUser = alias(users, 'assigneeUser');
 
@@ -150,9 +152,61 @@ export class DatabaseStorage implements IStorage {
 }
 
   async getIncidentById(id: string): Promise<IncidentWithDetails | undefined> {
-    const results = await this.getIncidents();
-    return results.find(incident => incident.id === id);
-  }
+  const result = await db
+    .select()
+    .from(incidents)
+    .leftJoin(centers, eq(incidents.centerId, centers.id))
+    .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+    .leftJoin(reporterUser, eq(incidents.reporterId, reporterUser.id))
+    .leftJoin(assigneeUser, eq(incidents.assigneeId, assigneeUser.id))
+    .where(eq(incidents.id, id));
+
+  if (!result[0]) return undefined;
+
+  const incident = result[0];
+
+  // Get participants
+  const participantsResult = await db
+    .select()
+    .from(incidentParticipants)
+    .leftJoin(users, eq(incidentParticipants.userId, users.id))
+    .where(eq(incidentParticipants.incidentId, id));
+
+  // Get action plans  
+  const actionPlansResult = await db
+    .select()
+    .from(actionPlans)
+    .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+    .where(eq(actionPlans.incidentId, id));
+
+  // Get history
+  const historyResult = await db
+    .select()
+    .from(incidentHistory)
+    .leftJoin(users, eq(incidentHistory.userId, users.id))
+    .where(eq(incidentHistory.incidentId, id))
+    .orderBy(desc(incidentHistory.createdAt));
+
+  return {
+    ...incident.incidents,
+    reporter: incident.reporterUser!,
+    assignee: incident.assigneeUser || undefined,
+    center: incident.centers!,
+    type: incident.incident_types!,
+    participants: participantsResult.map(p => ({
+      ...p.incident_participants,
+      user: p.users!
+    })),
+    actionPlans: actionPlansResult.map(a => ({
+      ...a.action_plans,
+      assignee: a.users!
+    })),
+    history: historyResult.map(h => ({
+      ...h.incident_history,
+      user: h.users || undefined
+    }))
+  } as IncidentWithDetails;
+}
 
   async createIncident(incident: InsertIncident): Promise<Incident> {
     // Generate incident number
@@ -558,9 +612,9 @@ async getGlobalStats() {
       globalResolutionRate,
       mostActiveCenterName: mostActiveCenter[0]?.centerName || 'N/A',
       recentIncidents: recentIncidents.map(incident => ({
-        ...incident,
-        createdAt: incident.createdAt.toISOString(),
-      })),
+  ...incident,
+  createdAt: incident.createdAt?.toISOString() || new Date().toISOString(),
+})),
     };
   } catch (error) {
     console.error('Error getting global stats:', error);
@@ -569,66 +623,79 @@ async getGlobalStats() {
 }
 
 // Método mejorado para obtener incidencias con filtros
-async getIncidents(filters: any = {}, limit: number = 50, offset: number = 0): Promise<(Incident & { center?: Center, reporter?: User, assignee?: User })[]> {
+async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
   try {
-    let query = db
-      .select({
-        incident: incidents,
-        center: centers,
-        reporter: {
-          id: reporterUser.id,
-          name: reporterUser.name,
-          email: reporterUser.email,
-        },
-        assignee: {
-          id: assigneeUser.id,
-          name: assigneeUser.name,
-          email: assigneeUser.email,
-        }
-      })
-      .from(incidents)
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .leftJoin(reporterUser, eq(incidents.reporterId, reporterUser.id))
-      .leftJoin(assigneeUser, eq(incidents.assigneeId, assigneeUser.id))
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(incidents.createdAt));
-
-    // Aplicar filtros dinámicamente
+    // Construir condiciones
     const conditions: any[] = [];
     
-    if (filters.status) {
-      conditions.push(eq(incidents.status, filters.status));
-    }
-    
-    if (filters.priority) {
-      conditions.push(eq(incidents.priority, filters.priority));
-    }
-    
-    if (filters.centerId) {
-      conditions.push(eq(incidents.centerId, filters.centerId));
-    }
-    
-    if (filters.assigneeId) {
-      conditions.push(eq(incidents.assigneeId, filters.assigneeId));
-    }
-    
-    if (filters.reporterId) {
-      conditions.push(eq(incidents.reporterId, filters.reporterId));
+    if (filters.status) conditions.push(eq(incidents.status, filters.status));
+    if (filters.priority) conditions.push(eq(incidents.priority, filters.priority));
+    if (filters.centerId) conditions.push(eq(incidents.centerId, filters.centerId));
+    if (filters.assigneeId) conditions.push(eq(incidents.assigneeId, filters.assigneeId));
+    if (filters.reporterId) conditions.push(eq(incidents.reporterId, filters.reporterId));
+
+    // Query única con filtros opcionales
+    const baseQuery = db
+      .select()
+      .from(incidents)
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .leftJoin(reporterUser, eq(incidents.reporterId, reporterUser.id))
+      .leftJoin(assigneeUser, eq(incidents.assigneeId, assigneeUser.id))
+      .orderBy(desc(incidents.createdAt));
+
+    const results = conditions.length > 0 
+      ? await baseQuery.where(and(...conditions))
+      : await baseQuery;
+
+    // Para cada incidente, obtener participantes, planes de acción e historial
+    const incidentsWithDetails: IncidentWithDetails[] = [];
+
+    for (const row of results) {
+      // Get participants
+      const participantsResult = await db
+        .select()
+        .from(incidentParticipants)
+        .leftJoin(users, eq(incidentParticipants.userId, users.id))
+        .where(eq(incidentParticipants.incidentId, row.incidents.id));
+
+      // Get action plans
+      const actionPlansResult = await db
+        .select()
+        .from(actionPlans)
+        .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+        .where(eq(actionPlans.incidentId, row.incidents.id));
+
+      // Get history
+      const historyResult = await db
+        .select()
+        .from(incidentHistory)
+        .leftJoin(users, eq(incidentHistory.userId, users.id))
+        .where(eq(incidentHistory.incidentId, row.incidents.id))
+        .orderBy(desc(incidentHistory.createdAt));
+
+      incidentsWithDetails.push({
+        ...row.incidents,
+        reporter: row.reporterUser!,
+        assignee: row.assigneeUser || undefined,
+        center: row.centers!,
+        type: row.incident_types!,
+        participants: participantsResult.map(p => ({
+          ...p.incident_participants,
+          user: p.users!
+        })),
+        actionPlans: actionPlansResult.map(a => ({
+          ...a.action_plans,
+          assignee: a.users!
+        })),
+        history: historyResult.map(h => ({
+          ...h.incident_history,
+          user: h.users || undefined
+        }))
+      } as IncidentWithDetails);
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    const results = await query;
-
-    return results.map(row => ({
-      ...row.incident,
-      center: row.center || undefined,
-      reporter: row.reporter || undefined,
-      assignee: row.assignee || undefined,
-    }));
+    return incidentsWithDetails;
   } catch (error) {
     console.error('Error getting incidents:', error);
     throw error;

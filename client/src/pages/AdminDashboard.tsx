@@ -37,9 +37,10 @@ import {
   YAxis, 
   ResponsiveContainer,
   Tooltip,
-  Legend
+  Legend,
+  Pie
 } from "recharts";
-import { toast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 interface GlobalStats {
   totalIncidents: number;
@@ -212,6 +213,7 @@ function IncidentsListView({ status, onBack }: IncidentsListViewProps) {
 
 export function AdminDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [view, setView] = useState<'dashboard' | 'incidents'>('dashboard');
   const [filterStatus, setFilterStatus] = useState<string>("");
@@ -329,28 +331,10 @@ export function AdminDashboard() {
       }
     },
   ];
-
-  if (globalLoading) {
-    return (
-      <Layout>
-        <div className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-24 bg-gray-200 rounded"></div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
   if (view === 'incidents') {
     return (
       <Layout>
-        <div className="p-6 max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <IncidentsListView 
             status={filterStatus} 
             onBack={() => setView('dashboard')} 
@@ -362,12 +346,12 @@ export function AdminDashboard() {
 
   return (
     <Layout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-page-title">
-              Dashboard Administrativo
+            <h1 className="text-3xl font-bold text-foreground">
+              Panel de Administración
             </h1>
             <p className="text-muted-foreground mt-2">
               Vista general del sistema de gestión de incidencias
@@ -375,13 +359,13 @@ export function AdminDashboard() {
           </div>
           <div className="flex gap-2">
             <Link href="/admin/settings">
-              <Button variant="outline" className="flex items-center gap-2" data-testid="button-settings">
+              <Button variant="outline" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Configuración
               </Button>
             </Link>
             <Link href="/incidents/new">
-              <Button className="flex items-center gap-2" data-testid="button-new-incident">
+              <Button className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 Nueva Incidencia
               </Button>
@@ -389,7 +373,7 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        {/* Statistics Cards con navegación */}
+        {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {statsCards.map((stat, index) => {
             const Icon = stat.icon;
@@ -406,11 +390,7 @@ export function AdminDashboard() {
                         {stat.title}
                       </p>
                       <p className="text-2xl font-bold">
-                        {globalLoading ? (
-                          <div className="h-8 w-16 bg-gray-200 animate-pulse rounded"></div>
-                        ) : (
-                          stat.value
-                        )}
+                        {globalLoading ? '...' : stat.value}
                       </p>
                     </div>
                     <Icon className={`h-8 w-8 ${stat.color}`} />
@@ -421,449 +401,66 @@ export function AdminDashboard() {
           })}
         </div>
 
-        {/* Main Content Tabs */}
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Vista General</TabsTrigger>
-            <TabsTrigger value="charts">Gráficas</TabsTrigger>
-            <TabsTrigger value="centers">Por Centro</TabsTrigger>
-            <TabsTrigger value="reports">Reportes</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Métricas clave */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Métricas Clave
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Centros Activos</span>
-                    <Badge variant="secondary">
-                      {globalLoading ? '...' : (globalStats?.totalCenters || 0)}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Promedio Incidencias/Centro</span>
-                    <span className="font-medium">
-                      {globalLoading ? '...' : Math.round((globalStats?.totalIncidents || 0) / Math.max(globalStats?.totalCenters || 1, 1))}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Centro Más Activo</span>
-                    <span className="font-medium text-sm">
-                      {globalLoading ? '...' : (globalStats?.mostActiveCenterName || 'N/A')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Tasa de Resolución Global</span>
-                    <span className="font-medium text-green-600">
-                      {globalLoading ? '...' : `${globalStats?.globalResolutionRate || 0}%`}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Incidencias recientes */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    Actividad Reciente
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {globalStats?.recentIncidents?.slice(0, 5).map((incident: any) => (
-                      <div key={incident.id} className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{incident.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {incident.center?.name} • {new Date(incident.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {incident.status}
-                        </Badge>
-                      </div>
-                    )) || (
-                      <p className="text-muted-foreground text-sm">No hay actividad reciente</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Sección de Alertas y Notificaciones */}
-            <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Alertas Importantes */}
-              <Card className="border-orange-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-orange-600">
-                    <AlertCircle className="h-5 w-5" />
-                    Alertas Importantes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {globalStats?.critical > 0 && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-red-500" />
-                          <span className="font-medium text-red-700">
-                            {globalStats.critical} incidencias críticas pendientes
-                          </span>
-                        </div>
-                        <Button 
-                          variant="link" 
-                          size="sm" 
-                          className="text-red-600 p-0 h-auto"
-                          onClick={() => {
-                            setFilterStatus("critical");
-                            setView('incidents');
-                          }}
-                        >
-                          Ver todas →
-                        </Button>
-                      </div>
-                    )}
-                    
-                    {globalStats?.inProgress > 10 && (
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-blue-500" />
-                          <span className="font-medium text-blue-700">
-                            Alto volumen: {globalStats.inProgress} incidencias en progreso
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {((globalStats?.totalIncidents || 0) === 0) && (
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          <span className="font-medium text-green-700">
-                            Sistema funcionando sin incidencias
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {(!globalStats?.critical && !globalStats?.inProgress) && globalStats?.totalIncidents > 0 && (
-                      <div className="text-center py-4 text-muted-foreground">
-                        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                        <p>No hay alertas importantes en este momento</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Resumen de Rendimiento */}
-              <Card className="border-blue-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-blue-600">
-                    <TrendingUp className="h-5 w-5" />
-                    Rendimiento del Sistema
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* Indicador de rendimiento general */}
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-blue-600 mb-1">
-                        {globalStats?.globalResolutionRate || 0}%
-                      </div>
-                      <p className="text-sm text-muted-foreground">Tasa de resolución</p>
-                    </div>
-                    
-                    {/* Métricas de rendimiento */}
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm">Tiempo promedio resolución</span>
-                        <Badge variant="secondary">
-                          {globalStats?.avgResolutionTime || 'N/A'}
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm">Productividad diaria</span>
-                        <Badge variant={globalStats?.dailyAverage > 5 ? "destructive" : "default"}>
-                          {globalStats?.dailyAverage || 0} incidencias/día
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm">Centro más eficiente</span>
-                        <span className="text-sm font-medium">
-                          {globalStats?.mostActiveCenterName || 'N/A'}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Botón para reporte detallado */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full mt-4"
-                      onClick={() => {
-                        toast({
-                          title: "Reporte de Rendimiento",
-                          description: "Funcionalidad en desarrollo",
-                        });
-                      }}
-                    >
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                      Ver Reporte Completo
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="charts" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Gráfica de distribución de estados */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <PieChart className="h-5 w-5" />
-                    Distribución por Estado
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <StatusDistributionChart data={chartData} />
-                </CardContent>
-              </Card>
-
-              {/* Gráfica de tendencia mensual */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Tendencia Mensual
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TrendChart data={processedTrendData} />
-                </CardContent>
-              </Card>
-
-              {/* Gráfica de barras por centro */}
-              <Card className="col-span-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" />
-                    Incidencias por Centro
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CenterBarChart data={centers.slice(0, 10)} />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="centers" className="space-y-4">
-            <div className="flex items-center gap-4 mb-6">
-              <Select value={selectedCenter} onValueChange={setSelectedCenter}>
-                <SelectTrigger className="w-[300px]">
-                  <SelectValue placeholder="Seleccionar centro..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {centers.map((center: Center) => (
-                    <SelectItem key={center.id} value={center.id}>
-                      {center.name} ({center.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedCenter && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total</p>
-                        <p className="text-2xl font-bold">
-                          {centerStatsLoading ? '...' : (centerStats?.totalIncidents || 0)}
-                        </p>
-                      </div>
-                      <FileText className="h-8 w-8 text-primary" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">En Progreso</p>
-                        <p className="text-2xl font-bold text-blue-600">
-                          {centerStatsLoading ? '...' : (centerStats?.inProgress || 0)}
-                        </p>
-                      </div>
-                      <Clock className="h-8 w-8 text-blue-500" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Completadas</p>
-                        <p className="text-2xl font-bold text-green-600">
-                          {centerStatsLoading ? '...' : (centerStats?.completed || 0)}
-                        </p>
-                      </div>
-                      <CheckCircle2 className="h-8 w-8 text-green-500" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Críticas</p>
-                        <p className="text-2xl font-bold text-red-600">
-                          {centerStatsLoading ? '...' : (centerStats?.critical || 0)}
-                        </p>
-                      </div>
-                      <AlertCircle className="h-8 w-8 text-red-500" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {!selectedCenter && (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Selecciona un Centro</h3>
-                  <p className="text-muted-foreground">
-                    Elige un centro de trabajo para ver sus estadísticas detalladas.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="reports" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    Estadísticas del Período
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span>Promedio Diario</span>
-                      <span className="font-medium">{globalStats?.dailyAverage || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Tiempo Promedio de Resolución</span>
-                      <span className="font-medium">{globalStats?.avgResolutionTime || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Tasa de Resolución Global</span>
-                      <span className="font-medium text-green-600">{globalStats?.globalResolutionRate || 0}%</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Recursos del Sistema
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span>Total de Usuarios</span>
-                      <span className="font-medium">{globalStats?.totalUsers || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Centros Activos</span>
-                      <span className="font-medium">{globalStats?.totalCenters || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Incidencias por Usuario</span>
-                      <span className="font-medium">
-                        {Math.round((globalStats?.totalIncidents || 0) / Math.max(globalStats?.totalUsers || 1, 1))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Eficiencia del Sistema</span>
-                      <span className="font-medium text-blue-600">
-                        {globalStats?.globalResolutionRate || 0}% efectividad
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Card de Acciones Rápidas */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Acciones Rápidas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Link href="/incidents/new">
-                    <Button className="w-full flex items-center gap-2" size="sm">
-                      <Plus className="h-4 w-4" />
-                      Nueva Incidencia
-                    </Button>
-                  </Link>
-                  <Link href="/admin/centers/new">
-                    <Button variant="outline" className="w-full flex items-center gap-2" size="sm">
-                      <Building2 className="h-4 w-4" />
-                      Nuevo Centro
-                    </Button>
-                  </Link>
-                  <Link href="/admin/users">
-                    <Button variant="outline" className="w-full flex items-center gap-2" size="sm">
-                      <Users className="h-4 w-4" />
-                      Gestionar Usuarios
-                    </Button>
-                  </Link>
-                  <Button 
-                    variant="outline" 
-                    className="w-full flex items-center gap-2" 
-                    size="sm"
-                    onClick={() => {
-                      globalStatsQuery.refetch();
-                      centersQuery.refetch();
-                    }}
+        {/* Rest of the dashboard content */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribución de Incidencias</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <RechartsPieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
                   >
-                    <TrendingUp className="h-4 w-4" />
-                    Actualizar Datos
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tendencia Mensual</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={trendData}>
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line 
+                    type="monotone" 
+                    dataKey="incidents" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    name="Reportadas"
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="resolved" 
+                    stroke="#10b981" 
+                    strokeWidth={2}
+                    name="Resueltas"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </Layout>
   );
 }
+  

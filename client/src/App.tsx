@@ -1,10 +1,11 @@
-// client/src/App.tsx - Agregar la ruta /centers/new
+// client/src/App.tsx - CORREGIDO
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
 import Landing from "@/pages/Landing";
 import Home from "@/pages/Home";
 import Incidents from "@/pages/Incidents";
@@ -21,33 +22,54 @@ import { ManageUsers } from "./pages/ManageUsers";
 import { ManageCenters } from "./pages/ManageCenters";
 
 function Router() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, error } = useAuth();
 
-  // Determine which dashboard to show based on user role
-  const getDashboardComponent = () => {
-    const userRole = (user as any)?.role;
-    switch (userRole) {
-      case 'admin':
-        return AdminDashboard;
-      case 'manager':
-      case 'supervisor':
-        return ManagerDashboard;
-      case 'user':
-      default:
-        return UserDashboard;
+  // Manejar errores de autenticación
+  useEffect(() => {
+    if (error && !isLoading) {
+      console.log('Auth error detected, clearing token');
+      localStorage.removeItem('auth_token');
+      // Forzar recarga para limpiar el estado
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
     }
-  };
+  }, [error, isLoading]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  const getDashboardComponent = () => {
+  const userRole = (user as any)?.role;
+  switch (userRole) {
+    case 'admin':
+      return () => <AdminDashboard />;
+    case 'manager':
+    case 'supervisor':
+      return () => <ManagerDashboard />;
+    case 'user':
+    default:
+      return () => <UserDashboard />;
+  }
+};
+
+const DashboardComponent = getDashboardComponent();
 
   return (
     <Switch>
-      {/* Ruta accesible sin autenticación */}
       <Route path="/test-users" component={TestUsers} />
       
-      {isLoading || !isAuthenticated ? (
+      {!isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
         <>
-          <Route path="/" component={getDashboardComponent()} />
+         <Route path="/" component={getDashboardComponent()} />
           <Route path="/dashboard/user" component={UserDashboard} />
           <Route path="/dashboard/manager" component={ManagerDashboard} />
           <Route path="/dashboard/admin" component={AdminDashboard} />

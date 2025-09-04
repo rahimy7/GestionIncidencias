@@ -5,6 +5,7 @@ import {
   BarChart, 
   Bar, 
   PieChart, 
+  Pie,
   Cell, 
   XAxis, 
   YAxis, 
@@ -13,7 +14,6 @@ import {
   Legend,
   CartesianGrid
 } from "recharts";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 interface ChartData {
   name: string;
@@ -83,7 +83,7 @@ export function StatusDistributionChart({ data }: StatusDistributionChartProps) 
   return (
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
-        <PieChart 
+        <Pie 
           data={chartData} 
           cx="50%" 
           cy="50%" 
@@ -96,7 +96,7 @@ export function StatusDistributionChart({ data }: StatusDistributionChartProps) 
           {chartData.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
-        </PieChart>
+        </Pie>
         <Tooltip 
           contentStyle={{
             backgroundColor: 'rgba(255, 255, 255, 0.95)',
