@@ -1,7 +1,26 @@
-import { useEffect, useMemo } from "react";
-import { useSearch } from "wouter"; // o react-router-dom: useSearchParams
+// client/src/components/IncidentList.tsx - MEJORADO
+import { useState, useMemo } from "react";
+import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO, isWithinInterval } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { IncidentDetail } from "@/components/IncidentDetail";
+import { 
+  FileText, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  Calendar,
+  MapPin,
+  Filter,
+  X,
+  Search,
+  Eye
+} from "lucide-react";
 
 type Incident = {
   id: string;
@@ -12,20 +31,20 @@ type Incident = {
   priority: "low" | "medium" | "high" | "critical" | string;
   centerId: string;
   typeId: string;
-  createdAt: string; // ISO
-  updatedAt: string; // ISO
+  createdAt: string;
+  updatedAt: string;
   center?: { id: string; name: string; code: string };
   type?: { id: string; name: string };
+  reporter?: { firstName: string; lastName: string; email: string };
 };
 
 type Center = { id: string; name: string; code?: string };
 type IncidentType = { id: string; name: string };
-
 type SortBy = "center" | "type" | "createdAt";
 type SortDir = "asc" | "desc";
 
 function useQueryString() {
-  const search = useSearch(); // ?centerId=...&typeId=...
+  const search = useSearch();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const get = (k: string) => params.get(k) || "";
@@ -36,7 +55,6 @@ function useQueryString() {
       else p.set(k, String(v));
     });
     const qs = p.toString();
-    // Cambia esto si usas react-router-dom: navigate({ search: `?${qs}` }, { replace: true })
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   };
 
@@ -45,253 +63,399 @@ function useQueryString() {
 
 export default function IncidentList() {
   const { get, setMany } = useQueryString();
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
-  // Lee filtros iniciales desde la URL
-  const centerId = get("centerId");
-  const typeId = get("typeId");
-  const startDate = get("startDate"); // yyyy-MM-dd
-  const endDate = get("endDate");     // yyyy-MM-dd
+  // Filtros desde URL
+  const centerId = get("centerId") || "all";
+  const typeId = get("typeId") || "all";
+  const startDate = get("startDate");
+  const endDate = get("endDate");
   const sortBy = (get("sortBy") as SortBy) || "createdAt";
   const sortDir = (get("sortDir") as SortDir) || "desc";
 
-  // Carga datos base
+  // Cargar datos con token
   const { data: incidents = [], isLoading } = useQuery<Incident[]>({
     queryKey: ["incidents", { centerId, typeId, startDate, endDate, sortBy, sortDir }],
-    // 1) Intenta server-side filtering/sorting si tu API ya lo soporta
-    // 2) Si no, quita los query params en la URL y filtra/ordena en cliente (ver "clientFiltered" abajo)
     queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
       const qs = new URLSearchParams();
-      if (centerId) qs.set("centerId", centerId);
-      if (typeId) qs.set("typeId", typeId);
+      if (centerId && centerId !== "all") qs.set("centerId", centerId);
+  if (typeId && typeId !== "all") qs.set("typeId", typeId);
       if (startDate) qs.set("startDate", startDate);
       if (endDate) qs.set("endDate", endDate);
       if (sortBy) qs.set("sortBy", sortBy);
       if (sortDir) qs.set("sortDir", sortDir);
-      const url = `/api/incidents${qs.toString() ? `?${qs.toString()}` : ""}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("No se pudo cargar incidencias");
-      return await res.json();
+      
+      const url = `/api/incidents${qs.toString() ? `?${qs.toString()}` : ''}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch incidents: ${response.status}`);
+      }
+      
+      return response.json();
     },
-    // Si tu endpoint todavía NO filtra/ordena, cambia la key a ["incidents"] y haz todo en cliente
   });
 
-  // Opcional: cargar catálogos (mejor UX que deducir desde incidents)
   const { data: centers = [] } = useQuery<Center[]>({
     queryKey: ["centers"],
     queryFn: async () => {
-      const res = await fetch("/api/centers");
-      if (!res.ok) return []; // fallback
-      return res.json();
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
+      const response = await fetch("/api/centers", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch centers: ${response.status}`);
+      }
+      
+      return response.json();
     },
   });
 
-  const { data: types = [] } = useQuery<IncidentType[]>({
+  const { data: incidentTypes = [] } = useQuery<IncidentType[]>({
     queryKey: ["incident-types"],
     queryFn: async () => {
-      const res = await fetch("/api/incident-types");
-      if (!res.ok) return []; // fallback
-      return res.json();
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
+      const response = await fetch("/api/incident-types", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch incident types: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      // Filtrar cualquier tipo con ID vacío
+      return data.filter((t: IncidentType) => t.id && t.id.trim() !== '');
     },
   });
 
-  // Fallback: si el server NO filtra/ordena, hazlo en cliente.
+  // Filtrado del lado cliente
   const clientFiltered = useMemo(() => {
-    let data = [...incidents];
+    let filtered = [...incidents];
 
-    // Filtro por tienda / tipo
-    if (centerId) data = data.filter(i => i.centerId === centerId);
-    if (typeId) data = data.filter(i => i.typeId === typeId);
-
-    // Filtro por fecha (en base a createdAt)
     if (startDate || endDate) {
-      const start = startDate ? parseISO(`${startDate}T00:00:00.000Z`) : undefined;
-      const end = endDate ? parseISO(`${endDate}T23:59:59.999Z`) : undefined;
-      data = data.filter(i => {
-        const d = parseISO(i.createdAt);
-        if (start && end) return isWithinInterval(d, { start, end });
-        if (start) return d >= start;
-        if (end) return d <= end;
-        return true;
+      filtered = filtered.filter((incident) => {
+        const date = parseISO(incident.createdAt);
+        const start = startDate ? parseISO(`${startDate}T00:00:00`) : new Date(0);
+        const end = endDate ? parseISO(`${endDate}T23:59:59`) : new Date();
+        return isWithinInterval(date, { start, end });
       });
     }
 
-    // Orden
-    data.sort((a, b) => {
-      let av: string | number = "";
-      let bv: string | number = "";
+    filtered.sort((a, b) => {
+      let aVal: any, bVal: any;
 
       if (sortBy === "center") {
-        av = a.center?.name || "";
-        bv = b.center?.name || "";
+        aVal = a.center?.name || "";
+        bVal = b.center?.name || "";
       } else if (sortBy === "type") {
-        av = a.type?.name || "";
-        bv = b.type?.name || "";
+        aVal = a.type?.name || "";
+        bVal = b.type?.name || "";
       } else {
-        // createdAt
-        av = +new Date(a.createdAt);
-        bv = +new Date(b.createdAt);
+        aVal = new Date(a.createdAt);
+        bVal = new Date(b.createdAt);
       }
 
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
 
-    return data;
-  }, [incidents, centerId, typeId, startDate, endDate, sortBy, sortDir]);
+    return filtered;
+  }, [incidents, startDate, endDate, sortBy, sortDir]);
 
-  // Opciones de selects (si no tienes endpoints, se deducen del dataset actual)
-  const centerOptions: Center[] = useMemo(() => {
-    if (centers.length) return centers;
-    const map = new Map<string, Center>();
-    incidents.forEach(i => {
-      if (i.center) map.set(i.center.id, { id: i.center.id, name: i.center.name, code: i.center.code });
-      else if (i.centerId) map.set(i.centerId, { id: i.centerId, name: i.centerId });
-    });
-   const arr: Center[] = [];
-map.forEach((v) => arr.push(v));
-return arr;
-
-  }, [centers, incidents]);
-
-  const typeOptions: IncidentType[] = useMemo(() => {
-    if (types.length) return types;
-    const map = new Map<string, IncidentType>();
-    incidents.forEach(i => {
-      if (i.type) map.set(i.type.id, { id: i.type.id, name: i.type.name });
-      else if (i.typeId) map.set(i.typeId, { id: i.typeId, name: i.typeId });
-    });
-    const arr: Center[] = [];
-map.forEach((v) => arr.push(v));
-return arr;
-
-  }, [types, incidents]);
-
-  const onFilterChange = (patch: Partial<{ centerId: string; typeId: string; startDate: string; endDate: string; sortBy: SortBy; sortDir: SortDir }>) => {
-    setMany(patch);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'pending_approval': return 'bg-orange-100 text-orange-800';
+      case 'reported': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'bg-red-100 text-red-800';
+      case 'high': return 'bg-orange-100 text-orange-800';
+      case 'medium': return 'bg-yellow-100 text-yellow-800';
+      case 'low': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case 'critical': return <AlertCircle className="h-4 w-4 text-red-600" />;
+      case 'high': return <AlertCircle className="h-4 w-4 text-orange-600" />;
+      case 'medium': return <Clock className="h-4 w-4 text-yellow-600" />;
+      case 'low': return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+      default: return <FileText className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  const statusLabels: Record<string, string> = {
+    'reported': 'Reportado',
+    'assigned': 'Asignado',
+    'in_progress': 'En Progreso',
+    'pending_approval': 'Pendiente',
+    'completed': 'Completado',
+    'resolved': 'Resuelto'
+  };
+
+  const priorityLabels: Record<string, string> = {
+    'low': 'Baja',
+    'medium': 'Media',
+    'high': 'Alta',
+    'critical': 'Crítica'
+  };
+
+  const hasActiveFilters = centerId || typeId || startDate || endDate;
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Incidencias</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Lista de Incidencias
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Centro</label>
+              <Select value={centerId} onValueChange={(value) => setMany({ centerId: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los centros" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los centros</SelectItem>
+                  {centers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} {c.code && `(${c.code})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-      {/* Controles */}
-      <div className="grid gap-3 md:grid-cols-6">
-        <div className="col-span-2">
-          <label className="block text-sm mb-1">Tienda</label>
-          <select
-            className="w-full rounded border p-2"
-            value={centerId}
-            onChange={(e) => onFilterChange({ centerId: e.target.value })}
-          >
-            <option value="">Todas</option>
-            {centerOptions.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.code ? `(${c.code})` : ""}
-              </option>
+            <div>
+              <label className="block text-sm font-medium mb-1">Tipo</label>
+              <Select value={typeId} onValueChange={(value) => setMany({ typeId: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los tipos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los tipos</SelectItem>
+                  {incidentTypes.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Fecha desde</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setMany({ startDate: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Fecha hasta</label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setMany({ endDate: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Ordenar</label>
+              <div className="flex gap-1">
+                <Select value={sortBy} onValueChange={(value) => setMany({ sortBy: value })}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt">Fecha</SelectItem>
+                    <SelectItem value="center">Centro</SelectItem>
+                    <SelectItem value="type">Tipo</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMany({ sortDir: sortDir === "asc" ? "desc" : "asc" })}
+                  className="px-3"
+                >
+                  {sortDir === "asc" ? "↑" : "↓"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Limpiar filtros */}
+          {hasActiveFilters && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMany({ centerId: "all", typeId: "all", startDate: "", endDate: "" })}
+                className="flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
+                Limpiar filtros
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {clientFiltered.length} de {incidents.length} incidencias
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Lista de incidencias */}
+      <div className="space-y-4">
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </select>
-        </div>
+          </div>
+        ) : clientFiltered.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No se encontraron incidencias</h3>
+              <p className="text-muted-foreground">
+                {hasActiveFilters 
+                  ? "Intenta ajustar los filtros de búsqueda"
+                  : "No hay incidencias disponibles en este momento"
+                }
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {clientFiltered.map((incident) => (
+              <Card 
+                key={incident.id} 
+                className="hover:shadow-lg transition-shadow cursor-pointer group"
+                onClick={() => setSelectedIncident(incident)}
+              >
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors">
+                          {incident.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          #{incident.incidentNumber}
+                        </p>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIncident(incident);
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
 
-        <div className="col-span-2">
-          <label className="block text-sm mb-1">Tipo de incidencia</label>
-          <select
-            className="w-full rounded border p-2"
-            value={typeId}
-            onChange={(e) => onFilterChange({ typeId: e.target.value })}
-          >
-            <option value="">Todos</option>
-            {typeOptions.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+                    {/* Badges */}
+                    <div className="flex items-center gap-2">
+                      <Badge className={getStatusColor(incident.status)}>
+                        {statusLabels[incident.status] || incident.status}
+                      </Badge>
+                      <Badge className={getPriorityColor(incident.priority)}>
+                        <div className="flex items-center gap-1">
+                          {getPriorityIcon(incident.priority)}
+                          {priorityLabels[incident.priority] || incident.priority}
+                        </div>
+                      </Badge>
+                    </div>
+
+                    {/* Descripción */}
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {incident.description}
+                    </p>
+
+                    {/* Meta información */}
+                    <div className="space-y-2 pt-2 border-t">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        <span>{incident.center?.name || `Centro ${incident.centerId}`}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-4 w-4" />
+                        <span>{format(parseISO(incident.createdAt), "dd/MM/yyyy HH:mm")}</span>
+                      </div>
+                      {incident.type && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <FileText className="h-4 w-4" />
+                          <span>{incident.type.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm mb-1">Desde</label>
-          <input
-            type="date"
-            className="w-full rounded border p-2"
-            value={startDate}
-            onChange={(e) => onFilterChange({ startDate: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm mb-1">Hasta</label>
-          <input
-            type="date"
-            className="w-full rounded border p-2"
-            value={endDate}
-            onChange={(e) => onFilterChange({ endDate: e.target.value })}
-          />
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Ordenamiento */}
-      <div className="grid gap-3 md:grid-cols-3">
-        <div>
-          <label className="block text-sm mb-1">Ordenar por</label>
-          <select
-            className="w-full rounded border p-2"
-            value={sortBy}
-            onChange={(e) => onFilterChange({ sortBy: e.target.value as SortBy })}
-          >
-            <option value="createdAt">Fecha de creación</option>
-            <option value="center">Tienda</option>
-            <option value="type">Tipo</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm mb-1">Dirección</label>
-          <select
-            className="w-full rounded border p-2"
-            value={sortDir}
-            onChange={(e) => onFilterChange({ sortDir: e.target.value as SortDir })}
-          >
-            <option value="desc">Descendente</option>
-            <option value="asc">Ascendente</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Tabla */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="p-2 border">#</th>
-              <th className="p-2 border">Título</th>
-              <th className="p-2 border">Tienda</th>
-              <th className="p-2 border">Tipo</th>
-              <th className="p-2 border">Prioridad</th>
-              <th className="p-2 border">Estado</th>
-              <th className="p-2 border">Creada</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td className="p-3 border" colSpan={7}>Cargando…</td></tr>
-            ) : clientFiltered.length === 0 ? (
-              <tr><td className="p-3 border" colSpan={7}>Sin resultados</td></tr>
-            ) : (
-              clientFiltered.map((i) => (
-                <tr key={i.id} className="hover:bg-gray-50">
-                  <td className="p-2 border">{i.incidentNumber}</td>
-                  <td className="p-2 border">{i.title}</td>
-                  <td className="p-2 border">{i.center?.name ?? i.centerId}</td>
-                  <td className="p-2 border">{i.type?.name ?? i.typeId}</td>
-                  <td className="p-2 border">{i.priority}</td>
-                  <td className="p-2 border">{i.status}</td>
-                  <td className="p-2 border">{format(parseISO(i.createdAt), "yyyy-MM-dd HH:mm")}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Modal de detalles */}
+      {selectedIncident && (
+        <IncidentDetail
+          incident={selectedIncident as any}
+          onClose={() => setSelectedIncident(null)}
+        />
+      )}
     </div>
   );
 }
+
 export { default as IncidentsList } from "./IncidentList";
