@@ -209,26 +209,52 @@ app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
 });
 
   // Incidents endpoints
-  app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
-    try {
-      const { status, priority, centerId, assigneeId, reporterId } = req.query;
-      // FIX: Usar req.user.id en lugar de req.user.claims.sub
-      const userId = req.user.id;
-      
-      const filters: any = {};
-      if (status) filters.status = status;
-      if (priority) filters.priority = priority;
-      if (centerId) filters.centerId = centerId;
-      if (assigneeId) filters.assigneeId = assigneeId;
-      if (reporterId) filters.reporterId = reporterId;
+// Reemplaza tu handler actual de /api/incidents por este:
+app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
+  try {
+    const {
+      centerId = "",
+      typeId = "",
+      startDate = "", // yyyy-MM-dd
+      endDate = "",   // yyyy-MM-dd
+      sortBy = "createdAt", // "createdAt" | "center" | "type"
+      sortDir = "desc",     // "asc" | "desc"
+      limit = "100",
+      offset = "0",
+    } = req.query as Record<string, string>;
 
-      const incidents = await storage.getIncidents(filters);
-      res.json(incidents);
-    } catch (error) {
-      console.error("Error fetching incidents:", error);
-      res.status(500).json({ message: "Failed to fetch incidents" });
+    // Mapeo a la firma que ya usas en /api/incidents/filtered
+    // (getIncidentsWithAdvancedFilters)
+    const filters: any = {};
+
+    if (centerId) filters.centerId = centerId;
+    if (typeId)   filters.typeId = typeId;
+
+    if (startDate) filters.dateFrom = new Date(`${startDate}T00:00:00.000Z`);
+    if (endDate) {
+      const end = new Date(`${endDate}T23:59:59.999Z`);
+      filters.dateTo = end;
     }
-  });
+
+    // Unifica el nombre de campo de ordenación con tu storage:
+    // "createdAt" -> "date" (como usas en /filtered)
+    filters.sortBy = (sortBy === "createdAt") ? "date" : sortBy;
+    filters.sortOrder = (sortDir === "asc") ? "asc" : "desc";
+
+    const incidents = await storage.getIncidentsWithAdvancedFilters(
+      filters,
+      parseInt(limit, 10),
+      parseInt(offset, 10)
+    );
+
+    res.json(incidents);
+  } catch (error) {
+    console.error("Error fetching incidents:", error);
+    res.status(500).json({ message: "Failed to fetch incidents" });
+  }
+});
+
+
 
   app.get('/api/incidents/assigned', isAuthenticated, async (req: any, res) => {
   try {

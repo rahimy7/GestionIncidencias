@@ -62,17 +62,17 @@ function Router() {
 const DashboardComponent = getDashboardComponent();
 
   return (
-    <Switch>
-      <Route path="/test-users" component={TestUsers} />
-      
-      {!isAuthenticated ? (
-        <Route path="/" component={Landing} />
-      ) : (
-        <>
-         <Route path="/" component={getDashboardComponent()} />
-          <Route path="/dashboard/user" component={UserDashboard} />
-          <Route path="/dashboard/manager" component={ManagerDashboard} />
-          <Route path="/dashboard/admin" component={AdminDashboard} />
+  <Switch>
+    <Route path="/test-users" component={TestUsers} />
+    
+    {!isAuthenticated ? (
+      <Route path="/" component={Landing} />
+    ) : (
+      <>
+        <Route path="/" component={DashboardComponent} />
+        <Route path="/dashboard/user" component={() => <UserDashboard />} />
+        <Route path="/dashboard/manager" component={() => <ManagerDashboard />} />
+        <Route path="/dashboard/admin" component={() => <AdminDashboard />} />
           <Route path="/users" component={ManageUsers} />
           <Route path="/users/new" component={CreateUser} />
           <Route path="/incidents" component={Incidents} />

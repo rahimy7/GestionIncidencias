@@ -94,10 +94,14 @@ function IncidentsListView({ status, onBack }: IncidentsListViewProps) {
       const params = new URLSearchParams();
       if (status) params.append('status', status);
       
-      const response = await fetch(`/api/incidents/filtered?${params}`);
-      if (!response.ok) throw new Error('Error fetching incidents');
-      return response.json();
-    }
+     const token = localStorage.getItem('auth_token');
+    const response = await fetch(`/api/incidents/filtered?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    
+    if (!response.ok) throw new Error('Error fetching incidents');
+    return response.json();
+  }
   });
 
   const getStatusColor = (status: string) => {
