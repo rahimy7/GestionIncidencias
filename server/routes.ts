@@ -96,7 +96,8 @@ app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
       lastName: user.lastName,
       role: user.role,
       department: user.department,
-      location: user.location
+      location: user.location,
+      centerId: user.centerId
     });
   } catch (error) {
     console.error('Error getting user:', error);

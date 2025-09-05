@@ -390,10 +390,53 @@ async getDashboardStats(userId?: string) {
       .offset(offset);
   }
 
-  async getCenterByManager(userId: string): Promise<Center | undefined> {
-    const [center] = await db.select().from(centers).where(eq(centers.managerId, userId));
+// server/storage.ts - Método mejorado getCenterByManager
+// server/storage.ts - Método getCenterByManager simplificado y correcto
+
+async getCenterByManager(userId: string): Promise<Center | undefined> {
+  try {
+    console.log(`🔍 [DEBUG] getCenterByManager called with userId: ${userId}`);
+    
+    // ESTRATEGIA ÚNICA: Buscar centro del usuario usando users.centerId
+    // Esto permite que gerentes y subgerentes vean el mismo centro
+    const [user] = await db
+      .select({ centerId: users.centerId })
+      .from(users)
+      .where(eq(users.id, userId));
+    
+    console.log(`👤 [DEBUG] User query result:`, user);
+    
+    if (!user?.centerId) {
+      console.log(`❌ [DEBUG] User has no centerId assigned`);
+      return undefined;
+    }
+    
+    console.log(`🏢 [DEBUG] Looking for center with ID: ${user.centerId}`);
+    
+    const [center] = await db
+      .select()
+      .from(centers)
+      .where(eq(centers.id, user.centerId));
+    
+    console.log(`🏢 [DEBUG] Center query result:`, center);
+    
+    if (center) {
+      console.log(`✅ [DEBUG] Center found successfully:`, {
+        id: center.id,
+        name: center.name,
+        code: center.code
+      });
+    } else {
+      console.log(`❌ [DEBUG] Center not found in database`);
+    }
+    
     return center || undefined;
+  } catch (error) {
+    console.error('❌ [ERROR] in getCenterByManager:', error);
+    throw error;
   }
+}
+
 
   // Incident History operations
   async addIncidentHistory(history: InsertIncidentHistory): Promise<IncidentHistory> {
