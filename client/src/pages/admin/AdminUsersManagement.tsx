@@ -1,96 +1,80 @@
 // client/src/pages/admin/AdminUsersManagement.tsx
 import { useState } from "react";
+import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/hooks/useAuth";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  Users,
-  Search,
-  Edit,
-  Trash2,
-  Eye,
-  Shield,
-  Crown,
-  User,
-  Plus,
-  ArrowLeft,
+  ArrowLeft, 
+  Users, 
+  Plus, 
+  Search, 
+  Crown, 
+  Shield, 
+  User, 
   AlertCircle
 } from "lucide-react";
-import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { EditUserDialog } from "@/components/EditUserDialog";
+import { DeleteUserDialog } from "@/components/DeleteUserDialog";
+import { ViewUserDialog } from "@/components/ViewUserDialog";
 
 interface User {
   id: string;
+  email: string;
   firstName: string;
   lastName: string;
-  email: string;
   role: string;
   department?: string;
-  departmentId?: string;
   location?: string;
+  createdAt: string;
   centerId?: string;
   center?: {
+    id: string;
     name: string;
     code: string;
+    address?: string;
   };
   departmentInfo?: {
+    id: string;
     name: string;
     code: string;
   };
-  createdAt: string;
 }
 
 export function AdminUsersManagement() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
+  // Query para obtener usuarios
+  const { 
+    data: users = [], 
+    isLoading: usersLoading, 
+    error: usersError 
+  } = useQuery<User[]>({
     queryKey: ['/api/users'],
-    queryFn: async (): Promise<User[]> => {
+    queryFn: async () => {
       const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/users', {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
-      if (!response.ok) throw new Error('Failed to load users');
-      return response.json();
-    }
-  });
-
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to delete user');
+        throw new Error('Failed to fetch users');
       }
+      
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      toast({
-        title: "Usuario eliminado",
-        description: "El usuario ha sido eliminado correctamente",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
   });
 
+  // Filtrar usuarios
   const filteredUsers = users.filter(user => {
     const matchesSearch = searchTerm === '' || 
       user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -104,6 +88,7 @@ export function AdminUsersManagement() {
     return matchesSearch && matchesFilter;
   });
 
+  // Funciones auxiliares
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'admin': return <Shield className="h-4 w-4 text-red-500" />;
@@ -121,6 +106,15 @@ export function AdminUsersManagement() {
     }
   };
 
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'bg-red-100 text-red-800';
+      case 'manager': return 'bg-yellow-100 text-yellow-800';
+      case 'user': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   const getAssignedTo = (user: User) => {
     if (user.role === 'admin') return 'Sistema';
     if (user.center) return `${user.center.code} - ${user.center.name}`;
@@ -129,12 +123,7 @@ export function AdminUsersManagement() {
     return 'Sin asignar';
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
-    if (window.confirm(`¿Estás seguro de que quieres eliminar al usuario ${userName}?`)) {
-      deleteUserMutation.mutate(userId);
-    }
-  };
-
+  // Manejo de errores
   if (usersError) {
     return (
       <Layout>
@@ -143,6 +132,12 @@ export function AdminUsersManagement() {
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">Error al cargar usuarios</h3>
             <p className="text-muted-foreground">No se pudieron cargar los usuarios. Intenta de nuevo.</p>
+            <Button 
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/users'] })}
+              className="mt-4"
+            >
+              Reintentar
+            </Button>
           </div>
         </div>
       </Layout>
@@ -302,7 +297,9 @@ export function AdminUsersManagement() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             {getRoleIcon(user.role)}
-                            <span className="text-sm font-medium">{getRoleLabel(user.role)}</span>
+                            <Badge className={getRoleColor(user.role)}>
+                              {getRoleLabel(user.role)}
+                            </Badge>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">{getAssignedTo(user)}</td>
@@ -312,24 +309,14 @@ export function AdminUsersManagement() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <Link href={`/admin/users/${user.id}`}>
-                              <button className="p-1 text-gray-400 hover:text-blue-600" title="Ver usuario">
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            </Link>
-                            <Link href={`/admin/users/${user.id}/edit`}>
-                              <button className="p-1 text-gray-400 hover:text-green-600" title="Editar usuario">
-                                <Edit className="h-4 w-4" />
-                              </button>
-                            </Link>
-                            <button 
-                              className="p-1 text-gray-400 hover:text-red-600"
-                              onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
-                              disabled={deleteUserMutation.isPending}
-                              title="Eliminar usuario"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {/* Componente ViewUserDialog */}
+                            <ViewUserDialog user={user} />
+                            
+                            {/* Componente EditUserDialog */}
+                            <EditUserDialog user={user} />
+                            
+                            {/* Componente DeleteUserDialog */}
+                            <DeleteUserDialog user={user} />
                           </div>
                         </td>
                       </tr>

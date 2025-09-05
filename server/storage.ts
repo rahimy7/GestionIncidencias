@@ -7,6 +7,7 @@ import {
   actionPlans,
   incidentHistory,
   type User,
+   type UserWithCenter,
   type UpsertUser,
   type Center,
   type InsertCenter,
@@ -45,8 +46,9 @@ type UserBasic = {
 
 export interface IStorage {
   // User operations (required for Replit Auth)
-  getUser(id: string): Promise<User | undefined>;
+  getUser(id: string): Promise<UserWithCenter | undefined>; // CAMBIAR AQUÍ
   upsertUser(user: UpsertUser): Promise<User>;
+  getUsers(): Promise<UserWithCenter[]>; 
 
   // Centers operations
   getCenters(): Promise<Center[]>;
@@ -424,49 +426,119 @@ async updateCenter(id: string, updates: UpdateCenter): Promise<Center> {
 
 // server/storage.ts - Agregar métodos de gestión de usuarios
 
-async getUsers() {
-  return await db
-    .select({
-      id: users.id,
-      department: users.department,
-      departmentId: users.departmentId, // AGREGAR ESTE CAMPO
-      email: users.email,
-      password: users.password,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      profileImageUrl: users.profileImageUrl,
-      role: users.role,
-      location: users.location,
-      centerId: users.centerId,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-    })
-    .from(users)
-    .orderBy(users.firstName, users.lastName);
-}
+// server/storage.ts - Actualizar el método getUsers()
 
-async getUser(userId: string): Promise<User | undefined> {
-  const [user] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      password: users.password,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      profileImageUrl: users.profileImageUrl,
-      role: users.role,
-      department: users.department,
-      departmentId: users.departmentId, // AGREGAR ESTE CAMPO
-      location: users.location,
-      centerId: users.centerId,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-    })
-    .from(users)
-    .where(eq(users.id, userId));
-  
-  return user;
-}
+
+
+// server/storage.ts - Actualizar el método getUser()
+  async getUsers(): Promise<UserWithCenter[]> {
+    const result = await db
+      .select({
+        // Campos del usuario
+        id: users.id,
+        department: users.department,
+        departmentId: users.departmentId,
+        email: users.email,
+        password: users.password,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+        role: users.role,
+        location: users.location,
+        centerId: users.centerId,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        // Campos del centro (cuando está asignado)
+        centerName: centers.name,
+        centerCode: centers.code,
+        centerAddress: centers.address,
+      })
+      .from(users)
+      .leftJoin(centers, eq(users.centerId, centers.id))
+      .orderBy(users.firstName, users.lastName);
+
+    // Mapear los resultados para incluir la información del centro en el formato esperado
+    return result.map(row => ({
+      id: row.id,
+      department: row.department,
+      departmentId: row.departmentId,
+      email: row.email,
+      password: row.password,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      profileImageUrl: row.profileImageUrl,
+      role: row.role,
+      location: row.location,
+      centerId: row.centerId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      // Incluir información del centro si existe y tiene datos válidos
+      center: row.centerId && row.centerName && row.centerCode ? {
+        id: row.centerId,
+        name: row.centerName,
+        code: row.centerCode,
+        address: row.centerAddress,
+      } : undefined
+    }));
+  }
+
+  // Método getUser actualizado
+  async getUser(userId: string): Promise<UserWithCenter | undefined> {
+    const result = await db
+      .select({
+        // Campos del usuario
+        id: users.id,
+        email: users.email,
+        password: users.password,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+        role: users.role,
+        department: users.department,
+        departmentId: users.departmentId,
+        location: users.location,
+        centerId: users.centerId,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        // Campos del centro (cuando está asignado)
+        centerName: centers.name,
+        centerCode: centers.code,
+        centerAddress: centers.address,
+      })
+      .from(users)
+      .leftJoin(centers, eq(users.centerId, centers.id))
+      .where(eq(users.id, userId));
+
+    if (result.length === 0) {
+      return undefined;
+    }
+
+    const row = result[0];
+    
+    // Mapear el resultado para incluir la información del centro
+    return {
+      id: row.id,
+      email: row.email,
+      password: row.password,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      profileImageUrl: row.profileImageUrl,
+      role: row.role,
+      department: row.department,
+      departmentId: row.departmentId,
+      location: row.location,
+      centerId: row.centerId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      // Incluir información del centro si existe y tiene datos válidos
+      center: row.centerId && row.centerName && row.centerCode ? {
+        id: row.centerId,
+        name: row.centerName,
+        code: row.centerCode,
+        address: row.centerAddress,
+      } : undefined
+    };
+  }
 
 async updateUser(userId: string, updates: any) {
   const [updatedUser] = await db

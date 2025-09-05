@@ -25,6 +25,13 @@ interface User {
   role: string;
   department?: string;
   location?: string;
+  centerId?: string;
+  center?: {
+    id: string;
+    name: string;
+    code: string;
+    address?: string;
+  };
 }
 
 interface EditUserDialogProps {
@@ -32,11 +39,8 @@ interface EditUserDialogProps {
 }
 
 export function EditUserDialog({ user }: EditUserDialogProps) {
-  // Obtén el centro asignado del usuario (puede venir como user.centerId o user.center?.id)
-  const initialCenterId =
-    (user as any).centerId ||
-    (user as any).center?.id ||
-    "";
+  // Obtener el centro asignado del usuario desde la propiedad centerId
+  const initialCenterId = user.centerId || "";
 
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -46,7 +50,7 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
     role: user.role,
     department: user.department || '',
     location: user.location || '',
-    centerId: initialCenterId, // Usar el centro actual por defecto
+    centerId: initialCenterId,
     password: '',
   });
 
@@ -60,7 +64,7 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // <-- Agrega este header
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(updates),
       });
@@ -203,25 +207,35 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
               />
             </div>
             <div>
-              <Label htmlFor="centerId">Centro Asignado</Label>
-              <Select
-                value={formData.centerId || "none"}
-                onValueChange={(value) => handleInputChange('centerId', value === "none" ? "" : value)}
-                disabled={centersLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar centro..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                  {centers?.map((center: any) => (
-                    <SelectItem key={center.id} value={center.id}>
-                      {center.name} - {center.code}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="location">Ubicación</Label>
+              <Input
+                id="location"
+                value={formData.location}
+                onChange={(e) => handleInputChange('location', e.target.value)}
+                placeholder="Ej: Santo Domingo, Santiago"
+              />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="centerId">Centro Asignado</Label>
+            <Select
+              value={formData.centerId || "none"}
+              onValueChange={(value) => handleInputChange('centerId', value === "none" ? "" : value)}
+              disabled={centersLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar centro..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin asignar</SelectItem>
+                {centers?.map((center: any) => (
+                  <SelectItem key={center.id} value={center.id}>
+                    {center.name} - {center.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -233,6 +247,23 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
               onChange={(e) => handleInputChange('password', e.target.value)}
               placeholder="Dejar vacío para mantener actual"
             />
+          </div>
+
+          {/* Información actual del usuario */}
+          <div className="bg-blue-50 p-3 rounded-lg">
+            <h4 className="text-sm font-medium text-blue-900 mb-2">Información actual:</h4>
+            <div className="space-y-1 text-sm text-blue-800">
+              <p><span className="font-medium">Rol actual:</span> {user.role}</p>
+              {user.center && (
+                <p><span className="font-medium">Centro asignado:</span> {user.center.name} ({user.center.code})</p>
+              )}
+              {user.department && (
+                <p><span className="font-medium">Departamento:</span> {user.department}</p>
+              )}
+              {user.location && (
+                <p><span className="font-medium">Ubicación:</span> {user.location}</p>
+              )}
+            </div>
           </div>
 
           <DialogFooter>

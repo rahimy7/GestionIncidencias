@@ -19,6 +19,7 @@ interface User {
   firstName: string;
   lastName: string;
   email: string;
+  role: string;
 }
 
 interface DeleteUserDialogProps {
@@ -32,22 +33,26 @@ export function DeleteUserDialog({ user }: DeleteUserDialogProps) {
 
   const deleteUserMutation = useMutation({
     mutationFn: async () => {
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/users/${user.id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
-
+      
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Error al eliminar usuario');
       }
-
+      
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       toast({
         title: "Usuario eliminado",
-        description: `${user.firstName} ${user.lastName} ha sido eliminado del sistema.`,
+        description: `${user.firstName} ${user.lastName} ha sido eliminado correctamente.`,
       });
       setOpen(false);
     },
@@ -76,25 +81,31 @@ export function DeleteUserDialog({ user }: DeleteUserDialogProps) {
           Eliminar
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-600">
-            <AlertTriangle className="h-5 w-5" />
-            Confirmar Eliminación
-          </DialogTitle>
-          <DialogDescription className="text-left">
-            ¿Estás seguro de que quieres eliminar a <strong>{user.firstName} {user.lastName}</strong>?
-            <br /><br />
-            <span className="text-red-600 font-medium">
-              Esta acción no se puede deshacer.
-            </span>
-            <br /><br />
-            El usuario será eliminado permanentemente del sistema y no podrá acceder más.
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+            <DialogTitle>Confirmar Eliminación</DialogTitle>
+          </div>
+          <DialogDescription className="pt-2">
+            Esta acción no se puede deshacer. Se eliminará permanentemente el usuario y todos sus datos asociados.
           </DialogDescription>
         </DialogHeader>
         
-        <DialogFooter className="gap-2">
+        <div className="py-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h4 className="font-medium text-red-900 mb-2">Usuario a eliminar:</h4>
+            <div className="space-y-1 text-sm text-red-800">
+              <p><span className="font-medium">Nombre:</span> {user.firstName} {user.lastName}</p>
+              <p><span className="font-medium">Email:</span> {user.email}</p>
+              <p><span className="font-medium">Rol:</span> {user.role}</p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
           <Button
+            type="button"
             variant="outline"
             onClick={() => setOpen(false)}
             disabled={deleteUserMutation.isPending}
@@ -102,19 +113,20 @@ export function DeleteUserDialog({ user }: DeleteUserDialogProps) {
             Cancelar
           </Button>
           <Button
+            type="button"
             variant="destructive"
             onClick={handleDelete}
             disabled={deleteUserMutation.isPending}
-            className="flex items-center gap-2"
+            className="bg-red-600 hover:bg-red-700"
           >
             {deleteUserMutation.isPending ? (
               <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 Eliminando...
               </>
             ) : (
               <>
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4 mr-2" />
                 Eliminar Usuario
               </>
             )}

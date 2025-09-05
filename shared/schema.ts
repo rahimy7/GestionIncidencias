@@ -390,3 +390,20 @@ export type CreateUser = {
   location?: string;
   centerId?: string; // <-- AGREGAR AQUÍ
 };
+
+// shared/schema.ts - Agregar al final del archivo, después de los tipos existentes
+
+// Nuevo tipo: User con información del centro incluida
+export type UserWithCenter = User & {
+  center?: {
+    id: string;
+    name: string;
+    code: string;
+    address?: string | null; // Permitir null
+  };
+  departmentInfo?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+};

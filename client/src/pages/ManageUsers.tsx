@@ -6,11 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Users, Plus, Search, Crown, Shield, User as UserIcon, Trash2, Edit } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Users, 
+  Plus, 
+  Search, 
+  Crown, 
+  Shield, 
+  User as UserIcon,
+  AlertCircle 
+} from "lucide-react";
 import { Link } from "wouter";
-// Update the import path to match the actual location of use-toast
-import { Toast } from "../components/ui/toast";
-import { EditUserDialog } from "@/components/EditUserDialog"; // Agrega este import
+import { useToast } from "@/hooks/use-toast";
+import { EditUserDialog } from "@/components/EditUserDialog";
+import { DeleteUserDialog } from "@/components/DeleteUserDialog";
+import { ViewUserDialog } from "@/components/ViewUserDialog";
 
 interface User {
   id: string;
@@ -21,14 +31,22 @@ interface User {
   department?: string;
   location?: string;
   createdAt: string;
+  centerId?: string;
+  center?: {
+    id: string;
+    name: string;
+    code: string;
+    address?: string;
+  };
 }
 
 export function ManageUsers() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  // Query para obtener usuarios
+  const { data: users = [], isLoading, error } = useQuery<User[]>({
     queryKey: ['/api/users'],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
@@ -46,60 +64,44 @@ export function ManageUsers() {
     },
   });
 
-  // Mutación para eliminar usuario
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/users/${userId}`, {
-        method: "DELETE",
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Error al eliminar usuario");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      Toast({
-        title: "Usuario eliminado",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      setDeletingUserId(null);
-    },
-    onError: (error: any) => {
-      Toast({
-        title: "Error al eliminar",
-        variant: "destructive",
-      });
-    },
+  // Filtrar usuarios basado en búsqueda
+  const filteredUsers = users.filter(user => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      user.firstName.toLowerCase().includes(searchLower) ||
+      user.lastName.toLowerCase().includes(searchLower) ||
+      user.email.toLowerCase().includes(searchLower) ||
+      (user.department && user.department.toLowerCase().includes(searchLower)) ||
+      user.role.toLowerCase().includes(searchLower)
+    );
   });
 
+  // Funciones auxiliares
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "admin":
-        return <Crown className="h-4 w-4" />;
+        return <Crown className="h-4 w-4 text-red-500" />;
       case "manager":
-        return <Shield className="h-4 w-4" />;
+        return <Shield className="h-4 w-4 text-yellow-500" />;
       case "user":
-        return <UserIcon className="h-4 w-4" />;
+        return <UserIcon className="h-4 w-4 text-blue-500" />;
       default:
-        return <UserIcon className="h-4 w-4" />;
+        return <UserIcon className="h-4 w-4 text-gray-500" />;
     }
   };
 
   const getRoleColor = (role: string) => {
     switch (role) {
       case "admin":
-        return "bg-red-100 text-red-800 border-red-200";
+        return "bg-red-100 text-red-800";
       case "manager":
-        return "bg-blue-100 text-blue-800 border-blue-200";
+        return "bg-yellow-100 text-yellow-800";
       case "user":
-        return "bg-green-100 text-green-800 border-green-200";
+        return "bg-blue-100 text-blue-800";
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -116,24 +118,21 @@ export function ManageUsers() {
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.department?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  if (isLoading) {
+  // Manejo de errores
+  if (error) {
     return (
       <Layout>
         <div className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-16 bg-gray-200 rounded"></div>
-              ))}
-            </div>
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Error al cargar usuarios</h3>
+            <p className="text-muted-foreground">No se pudieron cargar los usuarios. Intenta de nuevo.</p>
+            <Button 
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/users'] })}
+              className="mt-4"
+            >
+              Reintentar
+            </Button>
           </div>
         </div>
       </Layout>
@@ -142,11 +141,11 @@ export function ManageUsers() {
 
   return (
     <Layout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href="/dashboard">
               <Button variant="ghost" size="sm" className="flex items-center gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Volver al Dashboard
@@ -169,7 +168,7 @@ export function ManageUsers() {
           </Link>
         </div>
 
-        {/* Search and Filters */}
+        {/* Búsqueda */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -191,7 +190,55 @@ export function ManageUsers() {
           </CardContent>
         </Card>
 
-        {/* Users List */}
+        {/* Estadísticas rápidas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Total Usuarios</p>
+                  <p className="text-xl font-bold">{users.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-red-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Administradores</p>
+                  <p className="text-xl font-bold">{users.filter(u => u.role === 'admin').length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-yellow-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Gerentes</p>
+                  <p className="text-xl font-bold">{users.filter(u => u.role === 'manager').length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <UserIcon className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Usuarios</p>
+                  <p className="text-xl font-bold">{users.filter(u => u.role === 'user').length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Lista de Usuarios */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -201,7 +248,12 @@ export function ManageUsers() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
-              {filteredUsers.length === 0 ? (
+              {isLoading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-muted-foreground">Cargando usuarios...</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
                 <div className="text-center py-12">
                   <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-foreground mb-2">
@@ -239,50 +291,40 @@ export function ManageUsers() {
                               {user.department} {user.department && user.location && "•"} {user.location}
                             </p>
                           )}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Creado: {new Date(user.createdAt).toLocaleDateString('es-ES')}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {/* Reemplaza el botón Editar por el diálogo */}
+                        {/* Componente ViewUserDialog */}
+                        <ViewUserDialog user={user} />
+                        
+                        {/* Componente EditUserDialog */}
                         <EditUserDialog user={user} />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex items-center gap-2 text-red-600 hover:text-red-700"
-                          onClick={() => setDeletingUserId(user.id)}
-                          disabled={deleteUserMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Eliminar
-                        </Button>
+                        
+                        {/* Componente DeleteUserDialog */}
+                        <DeleteUserDialog user={user} />
                       </div>
                     </div>
-                    {/* Confirmación de eliminación */}
-                    {deletingUserId === user.id && (
-                      <div className="mt-2 flex gap-2">
-                        <span>¿Seguro que deseas eliminar este usuario?</span>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => deleteUserMutation.mutate(user.id)}
-                          disabled={deleteUserMutation.isPending}
-                        >
-                          Sí, eliminar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDeletingUserId(null)}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 ))
               )}
             </div>
           </CardContent>
         </Card>
+
+        {/* Footer con información adicional */}
+        {filteredUsers.length > 0 && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <p>
+              Mostrando {filteredUsers.length} de {users.length} usuarios
+            </p>
+            <p>
+              Última actualización: {new Date().toLocaleTimeString('es-ES')}
+            </p>
+          </div>
+        )}
       </div>
     </Layout>
   );
