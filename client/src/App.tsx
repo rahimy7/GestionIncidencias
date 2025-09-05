@@ -21,6 +21,10 @@ import { CreateUser } from "./pages/CreateUser";
 import { ManageUsers } from "./pages/ManageUsers";
 import { ManageCenters } from "./pages/ManageCenters";
 
+import { AdminUsersManagement } from "./pages/admin/AdminUsersManagement";
+import { AdminCentersManagement } from "./pages/admin/AdminCentersManagement";
+import { AdminDepartmentsManagement } from "./pages/admin/AdminDepartmentsManagement";
+
 function Router() {
   const { isAuthenticated, isLoading, user, error } = useAuth();
 
@@ -80,6 +84,42 @@ const DashboardComponent = getDashboardComponent();
           <Route path="/centers" component={ManageCenters} />
           <Route path="/centers/new" component={CreateCenter} />
           <Route path="/reports" component={Reports} />
+
+           {/* Rutas de gestión legacy (mantener por compatibilidad) */}
+          <Route path="/users" component={ManageUsers} />
+          <Route path="/users/new" component={CreateUser} />
+          <Route path="/centers" component={ManageCenters} />
+          <Route path="/centers/new" component={CreateCenter} />
+
+          {/* NUEVAS RUTAS ADMIN - VISTAS SEPARADAS */}
+          <Route path="/admin" component={AdminDashboard} />
+          
+          {/* Gestión de Usuarios */}
+          <Route path="/admin/users" component={AdminUsersManagement} />
+          <Route path="/admin/users/new" component={CreateUser} />
+          <Route path="/admin/users/:id" component={() => <div>Vista de Usuario</div>} />
+          <Route path="/admin/users/:id/edit" component={() => <div>Editar Usuario</div>} />
+          
+          {/* Gestión de Centros y Tiendas */}
+          <Route path="/admin/centers" component={AdminCentersManagement} />
+          <Route path="/admin/centers/new" component={CreateCenter} />
+          <Route path="/admin/centers/:id" component={() => <div>Vista de Centro</div>} />
+          <Route path="/admin/centers/:id/edit" component={() => <div>Editar Centro</div>} />
+          
+          {/* Gestión de Departamentos */}
+          <Route path="/admin/departments" component={AdminDepartmentsManagement} />
+          <Route path="/admin/departments/new" component={() => <div>Crear Departamento</div>} />
+          <Route path="/admin/departments/:id" component={() => <div>Vista de Departamento</div>} />
+          <Route path="/admin/departments/:id/edit" component={() => <div>Editar Departamento</div>} />
+          
+          {/* Gestión de Incidencias Admin */}
+          <Route path="/admin/incidents" component={Incidents} />
+          
+          {/* Configuración Admin */}
+          <Route path="/admin/settings" component={() => <div>Configuración Admin</div>} />
+
+          {/* Ruta 404 */}
+          <Route component={NotFound} />
         </>
       )}
       <Route component={NotFound} />

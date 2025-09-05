@@ -13,6 +13,7 @@ import {
   insertIncidentSchema,
   insertActionPlanSchema,
   insertIncidentParticipantSchema,
+  Center,
 } from "@shared/schema";
 import { z } from "zod";
 import { hashPassword } from './auth';
@@ -569,6 +570,248 @@ app.post("/api/users", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// Actualizar usuario
+app.put("/api/users/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // Si se actualiza el email, verificar que no esté en uso
+    if (updates.email) {
+      const existingUser = await storage.getUserByEmail(updates.email);
+      if (existingUser && existingUser.id !== id) {
+        return res.status(400).json({ 
+          message: "El email ya está en uso" 
+        });
+      }
+    }
+    
+    // Si se actualiza la contraseña, hashearla
+    if (updates.password) {
+      const { hashPassword } = await import('./auth.js');
+      updates.password = await hashPassword(updates.password);
+    }
+    
+    const updatedUser = await storage.updateUser(id, updates);
+    
+    // No devolver la contraseña
+    const { password, ...userResponse } = updatedUser;
+    res.json(userResponse);
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Error al actualizar el usuario" });
+  }
+});
+
+// Obtener usuario específico
+app.get("/api/users/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const user = await storage.getUser(id);
+    
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    
+    // No devolver la contraseña
+    const { password, ...userResponse } = user;
+    res.json(userResponse);
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    res.status(500).json({ message: "Error al obtener usuario" });
+  }
+});
+
+
+// Obtener todos los departamentos
+app.get("/api/departments", isAuthenticated, async (req, res) => {
+  try {
+    // Por ahora usamos los departments del campo department de users como referencia
+    // Más adelante se puede crear una tabla separada para departments
+    const departments = await storage.getDepartments();
+    res.json(departments);
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Failed to fetch departments" });
+  }
+});
+
+// Crear departamento
+app.post("/api/departments", isAuthenticated, async (req: any, res) => {
+  try {
+    const { name, code, description, headUserId } = req.body;
+    
+    // Validar datos requeridos
+    if (!name || !code) {
+      return res.status(400).json({ 
+        message: "Nombre y código son requeridos" 
+      });
+    }
+
+    // Verificar si el código ya existe
+    const existingDept = await storage.getDepartmentByCode(code);
+    if (existingDept) {
+      return res.status(400).json({ 
+        message: "El código de departamento ya existe" 
+      });
+    }
+
+    const departmentData = {
+      name,
+      code: code.toUpperCase(),
+      description: description || null,
+      headUserId: headUserId || null
+    };
+
+    const newDepartment = await storage.createDepartment(departmentData);
+    res.status(201).json(newDepartment);
+  } catch (error) {
+    console.error("Error creating department:", error);
+    res.status(500).json({ message: "Error al crear el departamento" });
+  }
+});
+
+// Actualizar departamento
+app.put("/api/departments/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const updatedDepartment = await storage.updateDepartment(id, updates);
+    res.json(updatedDepartment);
+  } catch (error) {
+    console.error("Error updating department:", error);
+    res.status(500).json({ message: "Error al actualizar el departamento" });
+  }
+});
+
+// Eliminar departamento
+app.delete("/api/departments/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar si hay usuarios asignados al departamento
+    const usersInDepartment = await storage.getUsersByDepartment(id);
+    if (usersInDepartment.length > 0) {
+      return res.status(400).json({ 
+        message: "No se puede eliminar el departamento porque tiene usuarios asignados" 
+      });
+    }
+
+    await storage.deleteDepartment(id);
+    res.json({ message: "Departamento eliminado correctamente" });
+  } catch (error) {
+    console.error("Error deleting department:", error);
+    res.status(500).json({ message: "Error al eliminar departamento" });
+  }
+});
+
+// =================== CENTROS/TIENDAS MEJORADOS ===================
+
+// Obtener centros/tiendas con filtro por tipo
+app.get('/api/centers', isAuthenticated, async (req: any, res) => {
+  try {
+    const { type } = req.query; // 'store' | 'center' | undefined (todos)
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    // Tipar explícitamente la variable centers
+    let centers: Center[] = [];
+    
+    if (user.role === 'admin') {
+      centers = await storage.getAllCenters(type);
+    } else if (user.role === 'manager' && user.centerId) {
+      const userCenter = await storage.getCenter(user.centerId);
+      centers = userCenter ? [userCenter] : [];
+    }
+    
+    res.json(centers);
+  } catch (error) {
+    console.error("Error fetching centers:", error);
+    res.status(500).json({ message: "Failed to fetch centers" });
+  }
+});
+
+// Crear centro/tienda
+app.post("/api/centers", isAuthenticated, async (req: any, res) => {
+  try {
+    const { name, code, address, managerId, type } = req.body;
+    
+    // Validar datos requeridos
+    if (!name || !code || !address) {
+      return res.status(400).json({ 
+        message: "Nombre, código y dirección son requeridos" 
+      });
+    }
+
+    // Validar formato del código según el tipo
+    const codeUpper = code.toUpperCase();
+    if (type === 'store' && !codeUpper.startsWith('T')) {
+      return res.status(400).json({ 
+        message: "El código de tienda debe iniciar con 'T' (ej: T01, T02)" 
+      });
+    }
+    if (type === 'center' && !codeUpper.startsWith('TCD')) {
+      return res.status(400).json({ 
+        message: "El código de centro debe iniciar con 'TCD' (ej: TCD11, TCD12)" 
+      });
+    }
+
+    // Verificar si el código ya existe
+    const existingCenter = await storage.getCenterByCode(codeUpper);
+    if (existingCenter) {
+      return res.status(400).json({ 
+        message: "El código ya existe" 
+      });
+    }
+
+    const centerData = {
+      name,
+      code: codeUpper,
+      address,
+      managerId: managerId || null
+    };
+
+    const newCenter = await storage.createCenter(centerData);
+    res.status(201).json(newCenter);
+  } catch (error) {
+    console.error("Error creating center:", error);
+    res.status(500).json({ message: "Error al crear el centro/tienda" });
+  }
+});
+
+// Actualizar centro/tienda
+app.put("/api/centers/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // Si se actualiza el código, validar formato
+    if (updates.code) {
+      const codeUpper = updates.code.toUpperCase();
+      updates.code = codeUpper;
+      
+      // Verificar si el nuevo código ya existe (excluyendo el centro actual)
+      const existingCenter = await storage.getCenterByCode(codeUpper);
+      if (existingCenter && existingCenter.id !== id) {
+        return res.status(400).json({ 
+          message: "El código ya existe" 
+        });
+      }
+    }
+    
+    const updatedCenter = await storage.updateCenter(id, updates);
+    res.json(updatedCenter);
+  } catch (error) {
+    console.error("Error updating center:", error);
+    res.status(500).json({ message: "Error al actualizar el centro/tienda" });
+  }
+});
+
 // Endpoint para subir archivos
 app.post('/api/upload', isAuthenticated, upload.single('file'), async (req: RequestWithFile, res) => {
   try {
@@ -650,6 +893,41 @@ app.get('/api/dashboard/global-stats', isAuthenticated, async (req: any, res) =>
   } catch (error) {
     console.error("Error fetching global stats:", error);
     res.status(500).json({ message: "Failed to fetch global stats" });
+  }
+});
+
+app.get('/api/dashboard/center-type-stats', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+
+    const stats = await storage.getCenterTypeStats();
+    res.json(stats);
+  } catch (error) {
+    console.error("Error fetching center type stats:", error);
+    res.status(500).json({ message: "Failed to fetch center type stats" });
+  }
+});
+
+// Estadísticas de departamentos
+app.get('/api/dashboard/department-stats', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+
+    const stats = await storage.getDepartmentStats();
+    res.json(stats);
+  } catch (error) {
+    console.error("Error fetching department stats:", error);
+    res.status(500).json({ message: "Failed to fetch department stats" });
   }
 });
 

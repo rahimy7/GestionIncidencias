@@ -69,6 +69,7 @@ export const users = pgTable("users", (): {
   profileImageUrl: ReturnType<typeof varchar>;
   role: ReturnType<typeof userRoleEnum>;
   department: ReturnType<typeof varchar>;
+  departmentId: ReturnType<typeof uuid>;
   location: ReturnType<typeof varchar>;
   centerId: ReturnType<typeof uuid>;
   createdAt: ReturnType<typeof timestamp>;
@@ -82,11 +83,22 @@ export const users = pgTable("users", (): {
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").default("user").notNull(),
   department: varchar("department"),
+  departmentId: uuid("department_id").references(() => departments.id), 
   location: varchar("location"),
   centerId: uuid("center_id").references(() => centers.id), // <-- NUEVO CAMPO
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }));
+
+export const departments = pgTable("departments", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  code: varchar("code", { length: 50 }).unique().notNull(),
+  description: text("description"),
+  headUserId: varchar("head_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 // Centers/Stores table
 export const centers = pgTable("centers", {
@@ -97,6 +109,8 @@ export const centers = pgTable("centers", {
   managerId: varchar("manager_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+
 
 // Incident types table
 export const incidentTypes = pgTable("incident_types", {
@@ -180,7 +194,7 @@ export const incidentHistory = pgTable("incident_history", {
 });
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   reportedIncidents: many(incidents, { relationName: "reporter" }),
   assignedIncidents: many(incidents, { relationName: "assignee" }),
   supervisedIncidents: many(incidents, { relationName: "supervisor" }),
@@ -188,6 +202,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   participations: many(incidentParticipants),
   actionPlans: many(actionPlans),
   historyEntries: many(incidentHistory),
+   department: one(departments, {
+    fields: [users.departmentId],
+    references: [departments.id],
+  }),
+  center: one(centers, {
+    fields: [users.centerId],
+    references: [centers.id],
+  }),
+  headedDepartment: one(departments, {
+    fields: [users.id],
+    references: [departments.headUserId],
+  }),
 }));
 
 export const centersRelations = relations(centers, ({ one, many }) => ({
@@ -264,18 +290,6 @@ export const incidentHistoryRelations = relations(incidentHistory, ({ one }) => 
   }),
 }));
 
-// Insert schemas
-export const upsertUserSchema = createInsertSchema(users).pick({
-  id: true,
-  email: true,
-  firstName: true,
-  lastName: true,
-  profileImageUrl: true,
-  role: true,
-  department: true,
-  location: true,
-  centerId: true, // <-- AGREGAR AQUÍ
-});
 
 export const insertCenterSchema = createInsertSchema(centers).omit({
   id: true,
@@ -310,6 +324,29 @@ export const insertIncidentHistorySchema = createInsertSchema(incidentHistory).o
   createdAt: true,
 });
 
+export const insertDepartmentSchema = createInsertSchema(departments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateDepartmentSchema = insertDepartmentSchema.partial();
+
+export const upsertUserSchema = createInsertSchema(users).pick({
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  profileImageUrl: true,
+  role: true,
+  department: true,
+  departmentId: true, // NUEVO
+  location: true,
+  centerId: true,
+});
+
+export const updateUserSchema = upsertUserSchema.partial().omit({ id: true });
+
 // Types
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -325,6 +362,12 @@ export type InsertActionPlan = z.infer<typeof insertActionPlanSchema>;
 export type ActionPlan = typeof actionPlans.$inferSelect;
 export type InsertIncidentHistory = z.infer<typeof insertIncidentHistorySchema>;
 export type IncidentHistory = typeof incidentHistory.$inferSelect;
+export type Department = typeof departments.$inferSelect;
+export type CreateDepartment = typeof departments.$inferInsert;
+export type UpdateDepartment = Partial<CreateDepartment>;
+export type UpdateUser = Partial<CreateUser>;
+export type CreateCenter = typeof centers.$inferInsert;
+export type UpdateCenter = Partial<CreateCenter>;
 
 // Extended types with relations
 export type IncidentWithDetails = Incident & {

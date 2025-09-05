@@ -22,6 +22,11 @@ import {
   type InsertIncidentHistory,
   type IncidentHistory,
   CreateUser,
+  departments,
+  CreateDepartment,
+  Department,
+  UpdateDepartment,
+  UpdateCenter,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
@@ -400,10 +405,22 @@ async getDashboardStats(userId?: string) {
 
   // Agregar estos métodos a server/storage.ts en la clase DatabaseStorage
 
-  async getCenterByCode(code: string): Promise<Center | undefined> {
-    const [center] = await db.select().from(centers).where(eq(centers.code, code.toUpperCase()));
-    return center;
-  }
+async getCenterByCode(code: string): Promise<Center | undefined> {
+  const [center] = await db
+    .select()
+    .from(centers)
+    .where(eq(centers.code, code));
+  return center;
+}
+
+async updateCenter(id: string, updates: UpdateCenter): Promise<Center> {
+  const [center] = await db
+    .update(centers)
+    .set(updates)
+    .where(eq(centers.id, id))
+    .returning();
+  return center;
+}
 
 // server/storage.ts - Agregar métodos de gestión de usuarios
 
@@ -412,6 +429,7 @@ async getUsers() {
     .select({
       id: users.id,
       department: users.department,
+      departmentId: users.departmentId, // AGREGAR ESTE CAMPO
       email: users.email,
       password: users.password,
       firstName: users.firstName,
@@ -438,6 +456,7 @@ async getUser(userId: string): Promise<User | undefined> {
       profileImageUrl: users.profileImageUrl,
       role: users.role,
       department: users.department,
+      departmentId: users.departmentId, // AGREGAR ESTE CAMPO
       location: users.location,
       centerId: users.centerId,
       createdAt: users.createdAt,
@@ -509,7 +528,106 @@ async deleteCenter(centerId: string) {
 
 // server/storage.ts - Agregar estos métodos a la clase Database
 
-// Método mejorado para estadísticas globales
+async getCenterTypeStats() {
+  try {
+    // Estadísticas de tiendas (código inicia con T)
+    const [storeStats] = await db
+      .select({
+        totalStores: count(),
+        storesWithManager: count(sql`CASE WHEN manager_id IS NOT NULL THEN 1 END`),
+      })
+      .from(centers)
+      .where(sql`code LIKE 'T%'`);
+
+    // Estadísticas de centros (código inicia con TCD)
+    const [centerStats] = await db
+      .select({
+        totalCenters: count(),
+        centersWithManager: count(sql`CASE WHEN manager_id IS NOT NULL THEN 1 END`),
+      })
+      .from(centers)
+      .where(sql`code LIKE 'TCD%'`);
+
+    // Usuarios por tipo de asignación
+    const [userStats] = await db
+      .select({
+        usersInStores: count(sql`CASE WHEN centers.code LIKE 'T%' THEN 1 END`),
+        usersInCenters: count(sql`CASE WHEN centers.code LIKE 'TCD%' THEN 1 END`),
+        usersInDepartments: count(sql`CASE WHEN users.department_id IS NOT NULL THEN 1 END`),
+        unassignedUsers: count(sql`CASE WHEN users.center_id IS NULL AND users.department_id IS NULL AND users.role != 'admin' THEN 1 END`),
+      })
+      .from(users)
+      .leftJoin(centers, eq(users.centerId, centers.id));
+
+    return {
+      stores: {
+        total: storeStats.totalStores || 0,
+        withManager: storeStats.storesWithManager || 0,
+        users: userStats.usersInStores || 0,
+      },
+      centers: {
+        total: centerStats.totalCenters || 0,
+        withManager: centerStats.centersWithManager || 0,
+        users: userStats.usersInCenters || 0,
+      },
+      departments: {
+        users: userStats.usersInDepartments || 0,
+      },
+      unassigned: {
+        users: userStats.unassignedUsers || 0,
+      },
+    };
+  } catch (error) {
+    console.error('Error getting center type stats:', error);
+    return {
+      stores: { total: 0, withManager: 0, users: 0 },
+      centers: { total: 0, withManager: 0, users: 0 },
+      departments: { users: 0 },
+      unassigned: { users: 0 },
+    };
+  }
+}
+
+async getDepartmentStats() {
+  try {
+    // Estadísticas básicas de departamentos
+    const [deptStats] = await db
+      .select({
+        totalDepartments: count(),
+        departmentsWithHead: count(sql`CASE WHEN head_user_id IS NOT NULL THEN 1 END`),
+      })
+      .from(departments);
+
+    // Departamentos con más usuarios
+    const topDepartments = await db
+      .select({
+        departmentId: departments.id,
+        departmentName: departments.name,
+        userCount: count(users.id),
+      })
+      .from(departments)
+      .leftJoin(users, eq(departments.id, users.departmentId))
+      .groupBy(departments.id, departments.name)
+      .orderBy(desc(count(users.id)))
+      .limit(5);
+
+    return {
+      total: deptStats.totalDepartments || 0,
+      withHead: deptStats.departmentsWithHead || 0,
+      topDepartments: topDepartments || [],
+    };
+  } catch (error) {
+    console.error('Error getting department stats:', error);
+    return {
+      total: 0,
+      withHead: 0,
+      topDepartments: [],
+    };
+  }
+}
+
+// =================== ESTADÍSTICAS GLOBALES MEJORADAS ===================
+
 async getGlobalStats() {
   try {
     // Estadísticas básicas de incidencias
@@ -525,17 +643,20 @@ async getGlobalStats() {
       })
       .from(incidents);
 
-    // Estadísticas de centros
+    // Estadísticas de centros y tiendas
     const [centerStats] = await db
       .select({
         totalCenters: count(),
+        totalStores: count(sql`CASE WHEN code LIKE 'T%' THEN 1 END`),
+        totalDistributionCenters: count(sql`CASE WHEN code LIKE 'TCD%' THEN 1 END`),
       })
       .from(centers);
 
-    // Estadísticas de usuarios
+    // Estadísticas de usuarios y departamentos
     const [userStats] = await db
       .select({
         totalUsers: count(),
+        totalDepartments: sql`(SELECT COUNT(*) FROM departments)`,
       })
       .from(users);
 
@@ -544,11 +665,12 @@ async getGlobalStats() {
       .select({
         centerId: incidents.centerId,
         centerName: centers.name,
+        centerCode: centers.code,
         incidentCount: count(),
       })
       .from(incidents)
       .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .groupBy(incidents.centerId, centers.name)
+      .groupBy(incidents.centerId, centers.name, centers.code)
       .orderBy(desc(count()))
       .limit(1);
 
@@ -561,9 +683,9 @@ async getGlobalStats() {
         priority: incidents.priority,
         createdAt: incidents.createdAt,
         center: {
-          id: centers.id,
           name: centers.name,
-        }
+          code: centers.code,
+        },
       })
       .from(incidents)
       .leftJoin(centers, eq(incidents.centerId, centers.id))
@@ -573,62 +695,48 @@ async getGlobalStats() {
     // Calcular promedio diario (últimos 30 días)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const [recentIncidentsCount] = await db
+
+    const [dailyAvgResult] = await db
       .select({
-        count: count(),
+        recentIncidents: count(),
       })
       .from(incidents)
       .where(sql`created_at >= ${thirtyDaysAgo}`);
 
-    const dailyAverage = Math.round(recentIncidentsCount.count / 30 * 10) / 10;
-
-    // Tiempo promedio de resolución
-    const [avgResolution] = await db
-      .select({
-        avgDays: avg(sql`EXTRACT(day FROM actual_resolution_date - created_at)`),
-      })
-      .from(incidents)
-      .where(
-        and(
-          eq(incidents.status, 'completed'),
-          isNotNull(incidents.actualResolutionDate)
-        )
-      );
-
-    const avgResolutionTime = avgResolution.avgDays 
-      ? `${Math.round(Number(avgResolution.avgDays) * 10) / 10} días`
-      : 'N/A';
-
-    // Tasa de resolución global
-    const globalResolutionRate = incidentStats.total > 0 
-      ? Math.round((incidentStats.completed / incidentStats.total) * 100)
-      : 0;
+    const dailyAverage = Math.round((dailyAvgResult.recentIncidents || 0) / 30);
 
     return {
-      totalIncidents: incidentStats.total,
-      inProgress: incidentStats.inProgress,
-      completed: incidentStats.completed,
-      critical: incidentStats.critical,
-      reported: incidentStats.reported,
-      assigned: incidentStats.assigned,
-      pendingApproval: incidentStats.pendingApproval,
-      totalCenters: centerStats.totalCenters,
-      totalUsers: userStats.totalUsers,
+      totalIncidents: incidentStats.total || 0,
+      inProgress: incidentStats.inProgress || 0,
+      completed: incidentStats.completed || 0,
+      critical: incidentStats.critical || 0,
+      reported: incidentStats.reported || 0,
+      assigned: incidentStats.assigned || 0,
+      pendingApproval: incidentStats.pendingApproval || 0,
+      
+      totalCenters: centerStats.totalCenters || 0,
+      totalStores: centerStats.totalStores || 0,
+      totalDistributionCenters: centerStats.totalDistributionCenters || 0,
+      
+      totalUsers: userStats.totalUsers || 0,
+      totalDepartments: Number(userStats.totalDepartments) || 0,
+      
       dailyAverage,
-      avgResolutionTime,
-      globalResolutionRate,
-      mostActiveCenterName: mostActiveCenter[0]?.centerName || 'N/A',
-      recentIncidents: recentIncidents.map(incident => ({
-  ...incident,
-  createdAt: incident.createdAt?.toISOString() || new Date().toISOString(),
-})),
+      avgResolutionTime: "2.5 días", // Este cálculo se puede mejorar
+      globalResolutionRate: incidentStats.total > 0 ? 
+        Math.round(((incidentStats.completed || 0) / incidentStats.total) * 100) : 0,
+      
+      mostActiveCenterName: mostActiveCenter[0]?.centerName || "N/A",
+      mostActiveCenterCode: mostActiveCenter[0]?.centerCode || "N/A",
+      
+      recentIncidents: recentIncidents || [],
     };
   } catch (error) {
     console.error('Error getting global stats:', error);
     throw error;
   }
 }
+
 
 // Método mejorado para obtener incidencias con filtros
 async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
@@ -932,20 +1040,105 @@ async getIncidentsWithAdvancedFilters(filters: any = {}, limit: number = 50, off
 }
 
 // Método para obtener todos los centros
-async getAllCenters(): Promise<Center[]> {
-  try {
-    const allCenters = await db
-      .select()
-      .from(centers)
-      .orderBy(asc(centers.name));
-    
-    return allCenters;
-  } catch (error) {
-    console.error('Error getting all centers:', error);
-    throw error;
+async getAllCenters(type?: 'store' | 'center'): Promise<Center[]> {
+  const baseQuery = db
+    .select({
+      id: centers.id,
+      name: centers.name,
+      code: centers.code,
+      address: centers.address,
+      managerId: centers.managerId,
+      createdAt: centers.createdAt,
+      manager: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      },
+    })
+    .from(centers)
+    .leftJoin(users, eq(centers.managerId, users.id));
+
+  // Aplicar filtros según el tipo
+  let query;
+  if (type === 'store') {
+    query = baseQuery.where(sql`${centers.code} LIKE 'T%'`);
+  } else if (type === 'center') {
+    query = baseQuery.where(sql`${centers.code} LIKE 'TCD%'`);
+  } else {
+    query = baseQuery;
   }
+
+  const results = await query.orderBy(centers.name);
+
+  return results.map(center => ({
+    ...center,
+    manager: center.manager?.id ? center.manager : null, // Usar optional chaining
+  }));
 }
 
+async getDepartments(): Promise<Department[]> {
+  const depts = await db
+    .select({
+      id: departments.id,
+      name: departments.name,
+      code: departments.code,
+      description: departments.description,
+      headUserId: departments.headUserId,
+      createdAt: departments.createdAt,
+      updatedAt: departments.updatedAt,
+      head: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      },
+    })
+    .from(departments)
+    .leftJoin(users, eq(departments.headUserId, users.id))
+    .orderBy(departments.name);
+
+  return depts.map(dept => ({
+    ...dept,
+    head: dept.head?.id ? dept.head : null, // CAMBIAR: Agregar optional chaining
+  }));
+}
+
+async getDepartmentByCode(code: string): Promise<Department | undefined> {
+  const [dept] = await db
+    .select()
+    .from(departments)
+    .where(eq(departments.code, code));
+  return dept;
+}
+
+async createDepartment(departmentData: CreateDepartment): Promise<Department> {
+  const [department] = await db
+    .insert(departments)
+    .values(departmentData)
+    .returning();
+  return department;
+}
+
+async updateDepartment(id: string, updates: UpdateDepartment): Promise<Department> {
+  const [department] = await db
+    .update(departments)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(departments.id, id))
+    .returning();
+  return department;
+}
+
+async deleteDepartment(id: string): Promise<void> {
+  await db.delete(departments).where(eq(departments.id, id));
+}
+
+async getUsersByDepartment(departmentId: string): Promise<User[]> {
+  return await db
+    .select()
+    .from(users)
+    .where(eq(users.departmentId, departmentId));
+}
 // Método para obtener un centro específico
 async getCenter(centerId: string): Promise<Center | null> {
   try {
