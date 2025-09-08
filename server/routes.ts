@@ -746,6 +746,16 @@ app.get("/api/users/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+app.get("/api/users-with-details", isAuthenticated, async (req: any, res) => {
+  try {
+    const usersWithDetails = await storage.getUsersWithDetails();
+    res.json(usersWithDetails);
+  } catch (error) {
+    console.error("Error fetching users with details:", error);
+    res.status(500).json({ message: "Error al obtener usuarios" });
+  }
+});
+
 
 // Obtener todos los departamentos
 app.get("/api/departments", isAuthenticated, async (req, res) => {
@@ -806,6 +816,25 @@ app.put("/api/departments/:id", isAuthenticated, async (req: any, res) => {
   } catch (error) {
     console.error("Error updating department:", error);
     res.status(500).json({ message: "Error al actualizar el departamento" });
+  }
+});
+
+// Agregar este endpoint en server/routes.ts después del GET /api/departments
+
+// Obtener departamento específico
+app.get("/api/departments/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const department = await storage.getDepartment(id);
+    
+    if (!department) {
+      return res.status(404).json({ message: "Departamento no encontrado" });
+    }
+    
+    res.json(department);
+  } catch (error) {
+    console.error("Error fetching department:", error);
+    res.status(500).json({ message: "Error al obtener departamento" });
   }
 });
 

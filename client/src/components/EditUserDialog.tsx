@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Edit } from "lucide-react";
+import { Edit, Building, Briefcase } from "lucide-react";
 
 interface User {
   id: string;
@@ -26,6 +26,7 @@ interface User {
   department?: string;
   location?: string;
   centerId?: string;
+  departmentId?: string;
   center?: {
     id: string;
     name: string;
@@ -39,9 +40,6 @@ interface EditUserDialogProps {
 }
 
 export function EditUserDialog({ user }: EditUserDialogProps) {
-  // Obtener el centro asignado del usuario desde la propiedad centerId
-  const initialCenterId = user.centerId || "";
-
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: user.firstName,
@@ -50,12 +48,39 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
     role: user.role,
     department: user.department || '',
     location: user.location || '',
-    centerId: initialCenterId,
+    centerId: user.centerId || "",
+    departmentId: user.departmentId || "",
     password: '',
   });
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Cargar centros
+  const { data: centers = [] } = useQuery({
+    queryKey: ['/api/centers'],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/centers', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to load centers');
+      return response.json();
+    }
+  });
+
+  // Cargar departamentos
+  const { data: departments = [] } = useQuery({
+    queryKey: ['/api/departments'],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/departments', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to load departments');
+      return response.json();
+    }
+  });
 
   const updateUserMutation = useMutation({
     mutationFn: async (updates: any) => {
@@ -84,41 +109,30 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
       });
       setOpen(false);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
       });
-    },
-  });
-
-  // Obtener centros disponibles
-  const { data: centers, isLoading: centersLoading } = useQuery({
-    queryKey: ['/api/centers'],
-    queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/centers', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Failed to fetch centers');
-      return response.json();
     }
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Preparar datos para envío
     const updates: any = {
       firstName: formData.firstName,
       lastName: formData.lastName,
       email: formData.email,
       role: formData.role,
-      department: formData.department || null,
-      location: formData.location || null,
-      centerId: formData.centerId || null,
+      location: formData.location || undefined,
+      centerId: formData.centerId || undefined,
+      departmentId: formData.departmentId || undefined,
     };
 
-    // Solo incluir password si se especificó
+    // Solo enviar password si se proporcionó
     if (formData.password.trim()) {
       updates.password = formData.password;
     }
@@ -127,25 +141,37 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
   };
 
   const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCenterChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      centerId: value === "none" ? "" : value,
+      departmentId: value !== "none" ? "" : prev.departmentId // Limpiar departamento si selecciona centro
+    }));
+  };
+
+  const handleDepartmentChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      departmentId: value === "none" ? "" : value,
+      centerId: value !== "none" ? "" : prev.centerId // Limpiar centro si selecciona departamento
     }));
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="flex items-center gap-2">
+        <Button variant="ghost" size="sm">
           <Edit className="h-4 w-4" />
-          Editar
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Editar Usuario</DialogTitle>
           <DialogDescription>
-            Actualiza la información del usuario. Los campos marcados son obligatorios.
+            Modifica la información del usuario. Los campos marcados son obligatorios.
           </DialogDescription>
         </DialogHeader>
         
@@ -190,50 +216,9 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="user">Usuario</SelectItem>
-                <SelectItem value="manager">Gerente</SelectItem>
+                <SelectItem value="supervisor">Supervisor</SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
                 <SelectItem value="admin">Administrador</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="department">Departamento</Label>
-              <Input
-                id="department"
-                value={formData.department}
-                onChange={(e) => handleInputChange('department', e.target.value)}
-                placeholder="Ej: IT, RRHH"
-              />
-            </div>
-            <div>
-              <Label htmlFor="location">Ubicación</Label>
-              <Input
-                id="location"
-                value={formData.location}
-                onChange={(e) => handleInputChange('location', e.target.value)}
-                placeholder="Ej: Santo Domingo, Santiago"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="centerId">Centro Asignado</Label>
-            <Select
-              value={formData.centerId || "none"}
-              onValueChange={(value) => handleInputChange('centerId', value === "none" ? "" : value)}
-              disabled={centersLoading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar centro..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {centers?.map((center: any) => (
-                  <SelectItem key={center.id} value={center.id}>
-                    {center.name} - {center.code}
-                  </SelectItem>
-                ))}
               </SelectContent>
             </Select>
           </div>
@@ -243,42 +228,81 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
             <Input
               id="password"
               type="password"
+              placeholder="Dejar vacío para mantener actual"
               value={formData.password}
               onChange={(e) => handleInputChange('password', e.target.value)}
-              placeholder="Dejar vacío para mantener actual"
             />
           </div>
 
-          {/* Información actual del usuario */}
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-900 mb-2">Información actual:</h4>
-            <div className="space-y-1 text-sm text-blue-800">
-              <p><span className="font-medium">Rol actual:</span> {user.role}</p>
-              {user.center && (
-                <p><span className="font-medium">Centro asignado:</span> {user.center.name} ({user.center.code})</p>
-              )}
-              {user.department && (
-                <p><span className="font-medium">Departamento:</span> {user.department}</p>
-              )}
-              {user.location && (
-                <p><span className="font-medium">Ubicación:</span> {user.location}</p>
-              )}
+          {/* Asignación */}
+          <div className="space-y-3">
+            <Label>Asignación</Label>
+            
+            <div>
+              <Label htmlFor="centerId" className="text-sm">Centro/Tienda</Label>
+              <Select 
+                value={formData.centerId || "none"} 
+                onValueChange={handleCenterChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar centro..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin centro asignado</SelectItem>
+                  {centers.map((center: any) => (
+                    <SelectItem key={center.id} value={center.id}>
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        {center.name} ({center.code})
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="text-center text-xs text-gray-500">- O -</div>
+
+            <div>
+              <Label htmlFor="departmentId" className="text-sm">Departamento</Label>
+              <Select 
+                value={formData.departmentId || "none"} 
+                onValueChange={handleDepartmentChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar departamento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin departamento asignado</SelectItem>
+                  {departments.map((dept: any) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        {dept.name} ({dept.code})
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
+          <div>
+            <Label htmlFor="location">Ubicación</Label>
+            <Input
+              id="location"
+              placeholder="Ej: Oficina 203"
+              value={formData.location}
+              onChange={(e) => handleInputChange('location', e.target.value)}
+            />
+          </div>
+
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              disabled={updateUserMutation.isPending}
-            >
-              {updateUserMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+            <Button type="submit" disabled={updateUserMutation.isPending}>
+              {updateUserMutation.isPending ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>
         </form>

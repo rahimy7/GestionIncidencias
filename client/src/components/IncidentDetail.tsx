@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { IncidentWithDetails } from "@shared/schema";
 import type { UploadResult } from "@uppy/core";
-import ParticipantsManager from '@/components/ParticipantsManager';
+import { ParticipantSearch } from '@/components/ParticipantSearch';
 
 
 interface IncidentDetailProps {
@@ -445,13 +445,11 @@ const handleRemoveParticipant = async (userId: string) => {
             </div>
           </TabsContent>
 <TabsContent value="participants" className="space-y-4">
-  <ParticipantsManager
-    incidentId={incident.id}
-    participants={participants}
-    onAddParticipant={handleAddParticipant}
+  <ParticipantSearch
+    incidentCenterId={incident.centerId}
+    currentParticipants={participants.map(p => p.userId)}
+    onAddParticipant={(userId, user) => handleAddParticipant(userId, 'participant')}
     onRemoveParticipant={handleRemoveParticipant}
-    currentUserCenterId={incident.center?.id}
-    isManager={true} // Obtener del contexto de usuario
   />
 </TabsContent>
        

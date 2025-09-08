@@ -386,9 +386,18 @@ export type CreateUser = {
   firstName: string;
   lastName: string;
   role?: "user" | "manager" | "department" | "supervisor" | "admin";
-  department?: string;
+  departmentId?: string;
   location?: string;
-  centerId?: string; // <-- AGREGAR AQUÍ
+  center_id?: string; // <-- AGREGAR AQUÍ
+};
+
+// Agrega este tipo después de los tipos existentes
+export type DepartmentWithHead = Department & {
+  head?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
 };
 
 // shared/schema.ts - Agregar al final del archivo, después de los tipos existentes

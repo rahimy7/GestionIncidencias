@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { IncidentDetail } from "@/components/IncidentDetail";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { ParticipantSearch } from "@/components/ParticipantSearch";
 
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();

@@ -28,6 +28,7 @@ import {
   Department,
   UpdateDepartment,
   UpdateCenter,
+  DepartmentWithHead,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
@@ -569,6 +570,52 @@ async updateCenter(id: string, updates: UpdateCenter): Promise<Center> {
     }));
   }
 
+  // Agregar en server/storage.ts en la clase DatabaseStorage
+
+async getUsersWithDetails(): Promise<any[]> {
+  try {
+    const result = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        centerId: users.centerId,
+        departmentId: users.departmentId,
+        center: {
+          id: centers.id,
+          name: centers.name,
+          code: centers.code,
+        },
+        departmentInfo: {
+          id: departments.id,
+          name: departments.name,
+          code: departments.code,
+        }
+      })
+      .from(users)
+      .leftJoin(centers, eq(users.centerId, centers.id))
+      .leftJoin(departments, eq(users.departmentId, departments.id))
+   
+
+    return result.map(row => ({
+  id: row.id,
+  firstName: row.firstName,
+  lastName: row.lastName,
+  email: row.email,
+  role: row.role,
+  centerId: row.centerId,
+  departmentId: row.departmentId,
+  center: row.center?.id ? row.center : null,
+  departmentInfo: row.departmentInfo?.id ? row.departmentInfo : null,
+}));
+  } catch (error) {
+    console.error('Error getting users with details:', error);
+    throw error;
+  }
+}
+
   // Método getUser actualizado
   async getUser(userId: string): Promise<UserWithCenter | undefined> {
     const result = await db
@@ -784,6 +831,34 @@ async getDepartmentStats() {
     };
   }
 }
+// Agregar este método en server/storage.ts en la clase DatabaseStorage
+
+async getDepartment(id: string): Promise<any> {
+  try {
+    const [department] = await db
+      .select()
+      .from(departments)
+      .leftJoin(users, eq(departments.headUserId, users.id))
+      .where(eq(departments.id, id));
+    
+    if (!department.departments) {
+      return null;
+    }
+
+    return {
+      ...department.departments,
+      head: department.users && department.users.firstName && department.users.lastName && department.users.email ? {
+        firstName: department.users.firstName,
+        lastName: department.users.lastName,
+        email: department.users.email,
+      } : null,
+    };
+  } catch (error) {
+    console.error('Error getting department:', error);
+    return null;
+  }
+}
+
 
 // =================== ESTADÍSTICAS GLOBALES MEJORADAS ===================
 
