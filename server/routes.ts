@@ -276,7 +276,6 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Failed to fetch incidents" });
   }
 });
-
 app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
@@ -290,15 +289,31 @@ app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
       return res.status(404).json({ message: "Incident not found" });
     }
 
+    // AGREGAR ESTOS LOGS AQUÍ:
+    console.log('Debug incident access:', {
+      userId,
+      userRole,
+      incidentId: id,
+      incident: {
+        reporterId: incident.reporterId,
+        assigneeId: incident.assigneeId,
+        centerId: incident.centerId
+      }
+    });
+
     // Check permissions
-    // Users can only see incidents they reported or are assigned to
-    // Managers can see incidents from their centers
-    // Admins can see all incidents
     if (userRole !== 'admin') {
+      if (userRole === 'manager' && incident.centerId) {
+        const isManager = await storage.isManagerOfCenter(userId, incident.centerId);
+        console.log(`isManagerOfCenter(${userId}, ${incident.centerId}):`, isManager);
+      }
+
       const hasAccess = 
         incident.reporterId === userId ||
         incident.assigneeId === userId ||
         (userRole === 'manager' && incident.centerId && await storage.isManagerOfCenter(userId, incident.centerId));
+      
+      console.log('Access check result:', hasAccess);
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });

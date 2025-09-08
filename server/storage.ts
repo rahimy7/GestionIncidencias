@@ -393,13 +393,14 @@ async getIncidentsByCenter(centerId: string, userId?: string, limit: number = 10
 
 async isManagerOfCenter(userId: string, centerId: string): Promise<boolean> {
   try {
-    const center = await db
-      .select()
-      .from(centers)
-      .where(eq(centers.id, centerId))
+    const [user] = await db
+      .select({ role: users.role, centerId: users.centerId })
+      .from(users)
+      .where(eq(users.id, userId))
       .limit(1);
     
-    return center.length > 0 && center[0].managerId === userId;
+    return user?.role === 'manager' && user?.centerId === centerId;
+    
   } catch (error) {
     console.error('Error checking manager access:', error);
     return false;
