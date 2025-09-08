@@ -380,15 +380,31 @@ async getDashboardStats(userId?: string) {
     }));
   }
 
-  async getIncidentsByCenter(centerId?: string, userId?: string, limit: number = 10, offset: number = 0): Promise<(Incident & { reporter?: User, center?: Center })[]> {
-    // Ejemplo usando SQL con paginación
-    return await db
-      .select()
-      .from(incidents)
-      .where(centerId ? eq(incidents.centerId, centerId) : undefined)
-      .limit(limit)
-      .offset(offset);
+async getIncidentsByCenter(centerId: string, userId?: string, limit: number = 100, offset: number = 0): Promise<IncidentWithDetails[]> {
+  try {
+    // Usar el método existente getIncidentsWithAdvancedFilters que ya funciona correctamente
+    const filters = { centerId: centerId };
+    return await this.getIncidentsWithAdvancedFilters(filters, limit, offset);
+  } catch (error) {
+    console.error('Error getting incidents by center:', error);
+    throw error;
   }
+}
+
+async isManagerOfCenter(userId: string, centerId: string): Promise<boolean> {
+  try {
+    const center = await db
+      .select()
+      .from(centers)
+      .where(eq(centers.id, centerId))
+      .limit(1);
+    
+    return center.length > 0 && center[0].managerId === userId;
+  } catch (error) {
+    console.error('Error checking manager access:', error);
+    return false;
+  }
+}
 
 // server/storage.ts - Método mejorado getCenterByManager
 // server/storage.ts - Método getCenterByManager simplificado y correcto

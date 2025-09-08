@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { FileText, Clock, CheckCircle2, AlertCircle, Plus, Users, ClipboardCheck } from "lucide-react";
 import { Link } from "wouter";
+import { IncidentCard } from "@/components/IncidentCard";
 
 export function UserDashboard() {
   const { user } = useAuth();
@@ -109,59 +110,7 @@ export function UserDashboard() {
     );
   }
 
-  const IncidentCard = ({ incident, showType }: { incident: any, showType?: string }) => (
-    <div 
-      className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-      data-testid={`incident-card-${incident.id}`}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="font-medium text-primary">
-              {incident.incidentNumber}
-            </span>
-            <Badge 
-              variant="outline" 
-              className={`${getPriorityColor(incident.priority)} text-white border-transparent`}
-            >
-              {incident.priority}
-            </Badge>
-            <div className={`flex items-center gap-1 ${getStatusColor(incident.status)}`}>
-              {getStatusIcon(incident.status)}
-              <span className="text-sm">
-                {getStatusText(incident.status)}
-              </span>
-            </div>
-            {showType && (
-              <Badge variant="secondary" className="text-xs">
-                {showType}
-              </Badge>
-            )}
-          </div>
-          <h4 className="font-medium text-foreground mb-1">
-            {incident.title}
-          </h4>
-          <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-            {incident.description}
-          </p>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>
-              Creado: {new Date(incident.createdAt).toLocaleDateString('es-ES')}
-            </span>
-            {incident.center && (
-              <span>Centro: {incident.center.name}</span>
-            )}
-          </div>
-        </div>
-        <Link href={`/incidents/${incident.id}`}>
-          <Button variant="outline" size="sm" data-testid={`button-view-incident-${incident.id}`}>
-            Ver Detalles
-          </Button>
-        </Link>
-      </div>
-    </div>
-  );
-
+ 
   return (
     <Layout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">

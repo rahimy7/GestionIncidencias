@@ -182,21 +182,42 @@ app.get('/api/incidents/my', isAuthenticated, async (req: any, res) => {
 });
 
   // Get incidents by center (for managers)
+// Reemplaza tu endpoint existente con esta versión mejorada
 app.get('/api/incidents/center/:centerId?', isAuthenticated, async (req: any, res) => {
   try {
-    const centerId = req.params.centerId;
+    let centerId = req.params.centerId;
     const userId = req.user.id;
-    // Nuevo: parámetros de paginación
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
-    const incidents = await storage.getIncidentsByCenter(centerId, userId);
+    
+    // Si no se proporciona centerId, obtener el centro del usuario (para managers)
+    if (!centerId) {
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      if (!user.centerId) {
+        return res.status(404).json({ message: "User is not assigned to a center" });
+      }
+      
+      centerId = user.centerId;
+      console.log(`Manager ${user.firstName} ${user.lastName} accessing their center incidents: ${centerId}`);
+    }
+    
+    // Usar getIncidentsWithAdvancedFilters en lugar de getIncidentsByCenter
+    const filters = { centerId: centerId };
+    const incidents = await storage.getIncidentsWithAdvancedFilters(filters, limit, offset);
+    
+    console.log(`Found ${incidents.length} incidents for center ${centerId}`);
+    
     res.json(incidents);
   } catch (error) {
     console.error("Error fetching center incidents:", error);
     res.status(500).json({ message: "Failed to fetch center incidents" });
   }
 });
-
   // Get user's managed center
 app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
   try {
@@ -253,6 +274,41 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
   } catch (error) {
     console.error("Error fetching incidents:", error);
     res.status(500).json({ message: "Failed to fetch incidents" });
+  }
+});
+
+app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    // Get the incident with all details
+    const incident = await storage.getIncidentById(id);
+    
+    if (!incident) {
+      return res.status(404).json({ message: "Incident not found" });
+    }
+
+    // Check permissions
+    // Users can only see incidents they reported or are assigned to
+    // Managers can see incidents from their centers
+    // Admins can see all incidents
+    if (userRole !== 'admin') {
+      const hasAccess = 
+        incident.reporterId === userId ||
+        incident.assigneeId === userId ||
+        (userRole === 'manager' && incident.centerId && await storage.isManagerOfCenter(userId, incident.centerId));
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    res.json(incident);
+  } catch (error) {
+    console.error("Error fetching incident:", error);
+    res.status(500).json({ message: "Failed to fetch incident" });
   }
 });
 

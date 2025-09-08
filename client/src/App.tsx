@@ -24,6 +24,7 @@ import { ManageCenters } from "./pages/ManageCenters";
 import { AdminUsersManagement } from "./pages/admin/AdminUsersManagement";
 import { AdminCentersManagement } from "./pages/admin/AdminCentersManagement";
 import { AdminDepartmentsManagement } from "./pages/admin/AdminDepartmentsManagement";
+import { IncidentDetailPage } from "@/pages/IncidentDetailPage";
 
 function Router() {
   const { isAuthenticated, isLoading, user, error } = useAuth();
@@ -114,6 +115,7 @@ const DashboardComponent = getDashboardComponent();
           
           {/* Gestión de Incidencias Admin */}
           <Route path="/admin/incidents" component={Incidents} />
+          <Route path="/incidents/:id" component={IncidentDetailPage} />
           
           {/* Configuración Admin */}
           <Route path="/admin/settings" component={() => <div>Configuración Admin</div>} />

@@ -68,45 +68,75 @@ export function ManagerDashboard() {
   const [sortBy, setSortBy] = useState<string>("date");
   
   // Obtener información del centro del manager
-  const { data: centerInfo, isLoading: centerLoading } = useQuery<Center | null>({
+  const { data: centerInfo, isLoading: centerLoading } = useQuery({
     queryKey: ['/api/centers/my'],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
+      const response = await fetch('/api/centers/my', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return response.json();
+    },
     enabled: !!user,
+    retry: 1,
   });
 
   // Obtener todas las incidencias del centro usando el endpoint correcto
-  const { data: centerIncidents, isLoading: incidentsLoading, refetch: refetchIncidents } = useQuery<Incident[]>({
-    queryKey: ['/api/incidents/filtered', centerInfo?.id, statusFilter, priorityFilter, searchTerm, sortBy],
+  const { data: centerIncidents, isLoading: incidentsLoading } = useQuery({
+    queryKey: ['/api/incidents/center'],
     queryFn: async () => {
-      if (!centerInfo?.id) return [];
-      
-      const params = new URLSearchParams({
-        centerId: centerInfo.id,
-        sortBy: sortBy === 'date' ? 'createdAt' : sortBy,
-        sortOrder: 'desc',
-        limit: '100'
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
+      const response = await fetch('/api/incidents/center', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
       });
       
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (priorityFilter !== 'all') params.append('priority', priorityFilter);
-      if (searchTerm) params.append('search', searchTerm);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const response = await fetch(`/api/incidents/filtered?${params}`);
-      if (!response.ok) throw new Error('Failed to load incidents');
       return response.json();
     },
-    enabled: !!centerInfo?.id,
+    enabled: !!user,
+    retry: 1,
   });
 
   // Obtener estadísticas del centro
-  const { data: centerStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['/api/dashboard/center-stats', centerInfo?.id],
+const { data: centerStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['/api/dashboard/center-stats'],
     queryFn: async () => {
-      if (!centerInfo?.id) return null;
-      const response = await fetch(`/api/dashboard/center-stats/${centerInfo.id}`);
-      if (!response.ok) throw new Error('Failed to load center stats');
+      const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('No auth token found');
+
+      const response = await fetch('/api/dashboard/center-stats', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       return response.json();
     },
-    enabled: !!centerInfo?.id,
+    enabled: !!user,
+    retry: 1,
   });
 
   const getPriorityColor = (priority: string) => {

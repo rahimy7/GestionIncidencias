@@ -1,3 +1,5 @@
+// client/src/components/IncidentDetail.tsx - VERSIÓN CORREGIDA
+
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -62,9 +64,13 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
     },
   });
 
+  // CORREGIDO: updateIncidentMutation
   const updateIncidentMutation = useMutation({
     mutationFn: async (updates: any) => {
-      const response = await apiRequest("PUT", `/api/incidents/${incident.id}`, updates);
+      const response = await apiRequest(`/api/incidents/${incident.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
       return response.json();
     },
     onSuccess: () => {
@@ -84,9 +90,13 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
     },
   });
 
+  // CORREGIDO: createActionPlanMutation
   const createActionPlanMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await apiRequest("POST", `/api/incidents/${incident.id}/action-plans`, data);
+      const response = await apiRequest(`/api/incidents/${incident.id}/action-plans`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return response.json();
     },
     onSuccess: () => {
@@ -106,9 +116,13 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
     },
   });
 
+  // CORREGIDO: handleGetUploadParameters
   const handleGetUploadParameters = async () => {
     try {
-      const response = await apiRequest("POST", "/api/objects/upload", {});
+      const response = await apiRequest("/api/objects/upload", {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
       const data = await response.json();
       return {
         method: "PUT" as const,
@@ -119,16 +133,22 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
     }
   };
 
+  // CORREGIDO: handleUploadComplete (función completa)
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     try {
       const uploadedFiles = [];
-      for (const file of result.successful) {
-        if (file.uploadURL) {
-          const response = await apiRequest("PUT", "/api/evidence-files", {
-            evidenceFileURL: file.uploadURL,
-          });
-          const data = await response.json();
-          uploadedFiles.push(data.objectPath);
+      if (result.successful) {
+        for (const file of result.successful) {
+          if (file.uploadURL) {
+            const response = await apiRequest("/api/evidence-files", {
+              method: 'PUT',
+              body: JSON.stringify({
+                evidenceFileURL: file.uploadURL,
+              })
+            });
+            const data = await response.json();
+            uploadedFiles.push(data.objectPath);
+          }
         }
       }
       
@@ -245,7 +265,7 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         <div>
                           <p className="text-sm text-muted-foreground">Fecha de Reporte</p>
-                          <p className="font-medium">{formatDate(incident.createdAt!)}</p>
+                          <p className="font-medium">{formatDate(incident.createdAt?.toString() || new Date().toISOString())}</p>
                         </div>
                       </div>
                     </div>
@@ -369,7 +389,7 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
                     <div key={participant.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                          {getInitials(participant.user.firstName, participant.user.email)}
+                          {getInitials(participant.user.firstName || undefined, participant.user.email || undefined)}
                         </div>
                         <div>
                           <p className="text-sm font-medium">
@@ -414,7 +434,7 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
                         <p className="text-sm text-muted-foreground mb-2">{actionPlan.description}</p>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Asignado a: {actionPlan.assignee?.firstName || actionPlan.assignee?.email}</span>
-                          <span>Vence: {formatDate(actionPlan.dueDate)}</span>
+                          <span>Vence: {actionPlan.dueDate ? formatDate(actionPlan.dueDate.toString()) : 'Sin fecha'}</span>
                         </div>
                       </CardContent>
                     </Card>
@@ -520,7 +540,7 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
                       <div className="flex-1 pb-4">
                         <p className="text-sm font-medium">{entry.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {formatDate(entry.createdAt!)} - {entry.user?.firstName || entry.user?.email || "Sistema"}
+                          {formatDate(entry.createdAt?.toString() || new Date().toISOString())} - {entry.user?.firstName || entry.user?.email || "Sistema"}
                         </p>
                       </div>
                     </div>
