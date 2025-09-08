@@ -327,8 +327,6 @@ app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
-
-
   app.get('/api/incidents/assigned', isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.id;
@@ -390,6 +388,60 @@ app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
       res.status(500).json({ message: "Failed to update incident" });
     }
   });
+
+
+  app.get('/api/incidents/:id/participants', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const participants = await storage.getIncidentParticipants(id);
+    res.json(participants);
+  } catch (error) {
+    console.error("Error fetching participants:", error);
+    res.status(500).json({ message: "Failed to fetch participants" });
+  }
+});
+
+// Agregar participante
+app.post('/api/incidents/:id/participants', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role = 'participant' } = req.body;
+    
+    const participant = await storage.addIncidentParticipant({
+      incidentId: id,
+      userId,
+      role
+    });
+    
+    res.status(201).json(participant);
+  } catch (error) {
+    console.error("Error adding participant:", error);
+    res.status(500).json({ message: "Failed to add participant" });
+  }
+});
+
+// Remover participante
+app.delete('/api/incidents/:id/participants/:userId', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id, userId } = req.params;
+    await storage.removeIncidentParticipant(id, userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error removing participant:", error);
+    res.status(500).json({ message: "Failed to remove participant" });
+  }
+});
+
+// Obtener departamentos
+app.get('/api/departments', isAuthenticated, async (req: any, res) => {
+  try {
+    const departments = await storage.getDepartments();
+    res.json(departments);
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Failed to fetch departments" });
+  }
+});
 
   // Action plans endpoints
   app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {

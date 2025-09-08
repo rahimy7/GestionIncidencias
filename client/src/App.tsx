@@ -24,7 +24,9 @@ import { ManageCenters } from "./pages/ManageCenters";
 import { AdminUsersManagement } from "./pages/admin/AdminUsersManagement";
 import { AdminCentersManagement } from "./pages/admin/AdminCentersManagement";
 import { AdminDepartmentsManagement } from "./pages/admin/AdminDepartmentsManagement";
+import { CreateDepartment } from "./pages/admin/CreateDepartment";
 import { IncidentDetailPage } from "@/pages/IncidentDetailPage";
+import { EditDepartment } from "./pages/admin/EditDepartment";
 
 function Router() {
   const { isAuthenticated, isLoading, user, error } = useAuth();
@@ -109,9 +111,9 @@ const DashboardComponent = getDashboardComponent();
           
           {/* Gestión de Departamentos */}
           <Route path="/admin/departments" component={AdminDepartmentsManagement} />
-          <Route path="/admin/departments/new" component={() => <div>Crear Departamento</div>} />
+          <Route path="/admin/departments/new" component={CreateDepartment} />
           <Route path="/admin/departments/:id" component={() => <div>Vista de Departamento</div>} />
-          <Route path="/admin/departments/:id/edit" component={() => <div>Editar Departamento</div>} />
+          <Route path="/admin/departments/:id/edit" component={EditDepartment} />
           
           {/* Gestión de Incidencias Admin */}
           <Route path="/admin/incidents" component={Incidents} />

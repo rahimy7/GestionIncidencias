@@ -328,7 +328,34 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
+async getIncidentParticipants(incidentId: string): Promise<(IncidentParticipant & { user: User })[]> {
+  const result = await db
+    .select({
+      id: incidentParticipants.id,
+      incidentId: incidentParticipants.incidentId,
+      userId: incidentParticipants.userId,
+      role: incidentParticipants.role,
+      createdAt: incidentParticipants.createdAt,
+      user: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        centerId: users.centerId,
+        departmentId: users.departmentId,
+      }
+    })
+    .from(incidentParticipants)
+    .leftJoin(users, eq(incidentParticipants.userId, users.id))
+    .where(eq(incidentParticipants.incidentId, incidentId))
+    .orderBy(incidentParticipants.createdAt);
 
+  return result.map(row => ({
+    ...row,
+    user: row.user as User
+  }));
+}
   // Dashboard statistics
 
 // server/storage.ts - Optimizar consultas del dashboard

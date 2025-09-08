@@ -1,6 +1,6 @@
 // client/src/components/IncidentDetail.tsx - VERSIÓN CORREGIDA
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type { IncidentWithDetails } from "@shared/schema";
 import type { UploadResult } from "@uppy/core";
+import ParticipantsManager from '@/components/ParticipantsManager';
+
 
 interface IncidentDetailProps {
   incident: IncidentWithDetails;
@@ -43,11 +45,31 @@ const priorityColors = {
   critical: "bg-red-100 text-red-800",
 };
 
+
+
+
 export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
   const [activeTab, setActiveTab] = useState("details");
   const [evidenceFiles, setEvidenceFiles] = useState<string[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [participants, setParticipants] = useState<any[]>([]);
+
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+useEffect(() => {
+  fetchCurrentUser();
+}, []);
+
+const fetchCurrentUser = async () => {
+  try {
+    const response = await apiRequest('/api/auth/user');
+    const user = await response.json();
+    setCurrentUser(user);
+  } catch (error) {
+    console.error('Error fetching user:', error);
+  }
+};
 
   const rootCauseForm = useForm({
     defaultValues: {
@@ -198,6 +220,58 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
     return 'U';
   };
 
+  useEffect(() => {
+  fetchParticipants();
+}, [incident.id]);
+
+const fetchParticipants = async () => {
+  try {
+    const response = await apiRequest(`/api/incidents/${incident.id}/participants`);
+    const data = await response.json();
+    setParticipants(data);
+  } catch (error) {
+    console.error('Error fetching participants:', error);
+  }
+};
+
+const handleAddParticipant = async (userId: string, role: string) => {
+  try {
+    await apiRequest(`/api/incidents/${incident.id}/participants`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, role })
+    });
+    fetchParticipants();
+    toast({
+      title: "Éxito",
+      description: "Participante agregado correctamente",
+    });
+  } catch (error) {
+    toast({
+      title: "Error", 
+      description: "No se pudo agregar el participante",
+      variant: "destructive",
+    });
+  }
+};
+
+const handleRemoveParticipant = async (userId: string) => {
+  try {
+    await apiRequest(`/api/incidents/${incident.id}/participants/${userId}`, {
+      method: 'DELETE'
+    });
+    fetchParticipants();
+    toast({
+      title: "Éxito",
+      description: "Participante removido correctamente",
+    });
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "No se pudo remover el participante", 
+      variant: "destructive",
+    });
+  }
+};
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto">
@@ -370,45 +444,17 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
               </div>
             </div>
           </TabsContent>
-
-          <TabsContent value="participants" className="space-y-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-foreground flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Participantes
-                  </h3>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Agregar Participante
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {incident.participants?.map((participant) => (
-                    <div key={participant.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                          {getInitials(participant.user.firstName || undefined, participant.user.email || undefined)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">
-                            {participant.user.firstName || participant.user.email}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {participant.user.department || "Sin departamento"}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant="outline">
-                        {participant.role}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+<TabsContent value="participants" className="space-y-4">
+  <ParticipantsManager
+    incidentId={incident.id}
+    participants={participants}
+    onAddParticipant={handleAddParticipant}
+    onRemoveParticipant={handleRemoveParticipant}
+    currentUserCenterId={incident.center?.id}
+    isManager={true} // Obtener del contexto de usuario
+  />
+</TabsContent>
+       
 
           <TabsContent value="actions" className="space-y-4">
             <Card>
