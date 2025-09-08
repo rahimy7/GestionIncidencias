@@ -444,27 +444,29 @@ app.get('/api/departments', isAuthenticated, async (req: any, res) => {
 });
 
   // Action plans endpoints
-  app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      // FIX: Usar req.user.id en lugar de req.user.claims.sub
-      const userId = req.user.id;
-      
-      const validatedData = insertActionPlanSchema.parse({
-        ...req.body,
-        incidentId: id,
-      });
+app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    // Convertir dueDate string a Date
+    const data = {
+      ...req.body,
+      incidentId: id,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null
+    };
 
-      const actionPlan = await storage.createActionPlan(validatedData);
-      res.status(201).json(actionPlan);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
-      console.error("Error creating action plan:", error);
-      res.status(500).json({ message: "Failed to create action plan" });
+    const validatedData = insertActionPlanSchema.parse(data);
+    const actionPlan = await storage.createActionPlan(validatedData);
+    res.status(201).json(actionPlan);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid data", errors: error.errors });
     }
-  });
+    console.error("Error creating action plan:", error);
+    res.status(500).json({ message: "Failed to create action plan" });
+  }
+});
 
   // Evidence upload endpoint - FIX IMPORTANTE
   app.put("/api/evidence-files", isAuthenticated, async (req: any, res) => {
@@ -612,6 +614,8 @@ app.put("/api/users/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// server/routes.ts - Reemplazar la función DELETE /api/users/:id
+
 app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
@@ -633,15 +637,8 @@ app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
 
-    // Verificar si el usuario tiene incidencias asociadas
-    const userIncidents = await storage.getIncidentsByReporter(id);
-    const assignedIncidents = await storage.getIncidentsByAssignee(id);
-    
-    if (userIncidents.length > 0 || assignedIncidents.length > 0) {
-      return res.status(400).json({ 
-        message: "No se puede eliminar el usuario porque tiene incidencias asociadas" 
-      });
-    }
+    // Eliminar todas las referencias antes de eliminar el usuario
+    await storage.removeUserReferences(id);
 
     await storage.deleteUser(id);
     res.json({ message: "Usuario eliminado correctamente" });
@@ -650,6 +647,9 @@ app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Error al eliminar usuario" });
   }
 });
+
+// server/storage.ts - Agregar este método a la clase DatabaseStorage
+
 
   // Agregar estos endpoints al final de server/routes.ts, antes de "const httpServer = createServer(app);"
 

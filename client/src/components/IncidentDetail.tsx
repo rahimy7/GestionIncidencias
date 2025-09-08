@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ import {
 import type { IncidentWithDetails } from "@shared/schema";
 import type { UploadResult } from "@uppy/core";
 import { ParticipantSearch } from '@/components/ParticipantSearch';
+import { ParticipantSelector } from "@/components/ParticipantSelector";
 
 
 interface IncidentDetailProps {
@@ -56,6 +57,8 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
   const [participants, setParticipants] = useState<any[]>([]);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string>('');
+  const [isCreatingActionPlan, setIsCreatingActionPlan] = useState(false);
 
 useEffect(() => {
   fetchCurrentUser();
@@ -197,12 +200,34 @@ const fetchCurrentUser = async () => {
     updateIncidentMutation.mutate({ rootCause: data.rootCause });
   };
 
-  const onCreateActionPlan = (data: any) => {
-    createActionPlanMutation.mutate({
-      ...data,
-      dueDate: new Date(data.dueDate),
+const onCreateActionPlan = async (values: any) => {
+  if (!incident?.id) return;
+  
+  setIsCreatingActionPlan(true);
+  try {
+    // ✅ Usar la mutation en lugar de llamarse a sí misma
+    await createActionPlanMutation.mutateAsync({
+      incidentId: incident.id,
+      ...values,
     });
-  };
+    
+    actionPlanForm.reset();
+    setSelectedParticipantId('');
+    
+    toast({
+      title: "Plan de acción creado",
+      description: "El plan de acción se ha creado exitosamente.",
+    });
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "No se pudo crear el plan de acción.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsCreatingActionPlan(false);
+  }
+};
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-ES', {
@@ -486,79 +511,94 @@ const handleRemoveParticipant = async (userId: string) => {
                 </div>
 
                 {/* New Action Plan Form */}
-                <Card>
-                  <CardContent className="p-4">
-                    <h4 className="font-medium mb-3">Nuevo Plan de Acción</h4>
-                    <Form {...actionPlanForm}>
-                      <form onSubmit={actionPlanForm.handleSubmit(onCreateActionPlan)} className="space-y-3">
-                        <FormField
-                          control={actionPlanForm.control}
-                          name="title"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Título</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Título del plan de acción" {...field} />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={actionPlanForm.control}
-                          name="description"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Descripción</FormLabel>
-                              <FormControl>
-                                <Textarea placeholder="Descripción detallada" {...field} />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <div className="grid grid-cols-2 gap-3">
-                          <FormField
-                            control={actionPlanForm.control}
-                            name="assigneeId"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Asignar a</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Seleccionar usuario" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {incident.participants?.map((participant) => (
-                                      <SelectItem key={participant.userId} value={participant.userId}>
-                                        {participant.user.firstName || participant.user.email}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={actionPlanForm.control}
-                            name="dueDate"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Fecha límite</FormLabel>
-                                <FormControl>
-                                  <Input type="datetime-local" {...field} />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                        <Button type="submit" disabled={createActionPlanMutation.isPending}>
-                          {createActionPlanMutation.isPending ? "Creando..." : "Crear Plan de Acción"}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
+            <Card>
+  <CardContent className="p-4">
+    <h4 className="font-medium mb-3">Nuevo Plan de Acción</h4>
+    <Form {...actionPlanForm}>
+      <form onSubmit={actionPlanForm.handleSubmit(onCreateActionPlan)} className="space-y-3">
+        <FormField
+          control={actionPlanForm.control}
+          name="title"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Título</FormLabel>
+              <FormControl>
+                <Input placeholder="Título del plan de acción" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={actionPlanForm.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Descripción</FormLabel>
+              <FormControl>
+                <Textarea 
+                  placeholder="Descripción detallada del plan de acción" 
+                  {...field} 
+                  rows={3}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Reemplazar el campo assigneeId con el ParticipantSelector */}
+        <FormField
+          control={actionPlanForm.control}
+          name="assigneeId"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <ParticipantSelector
+                  participants={participants}
+                  selectedUserId={field.value}
+                  onSelectUser={(userId, user) => {
+                    field.onChange(userId);
+                    setSelectedParticipantId(userId);
+                  }}
+                  label="Responsable del plan"
+                  placeholder="Seleccionar responsable"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+       <FormField
+  control={actionPlanForm.control}
+  name="dueDate"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Fecha límite</FormLabel>
+      <FormControl>
+        <Input 
+          type="date" 
+          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+          onChange={(e) => {
+            const dateValue = e.target.value ? new Date(e.target.value + 'T00:00:00.000Z') : null;
+            field.onChange(dateValue);
+          }}
+        />
+      </FormControl>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
+        
+        <Button type="submit" className="w-full" disabled={isCreatingActionPlan}>
+          {isCreatingActionPlan ? 'Creando...' : 'Crear Plan de Acción'}
+        </Button>
+      </form>
+    </Form>
+  </CardContent>
+</Card>
               </CardContent>
             </Card>
           </TabsContent>

@@ -359,6 +359,66 @@ async getIncidentParticipants(incidentId: string): Promise<(IncidentParticipant 
 }
   // Dashboard statistics
 
+  
+async removeManagerFromCenters(managerId: string): Promise<void> {
+  try {
+    await db
+      .update(centers)
+      .set({ managerId: null })
+      .where(eq(centers.managerId, managerId));
+  } catch (error) {
+    console.error('Error removing manager from centers:', error);
+    throw error;
+  }
+}
+
+async removeUserReferences(userId: string): Promise<void> {
+  try {
+    // Desasignar como manager de centros
+    await db
+      .update(centers)
+      .set({ managerId: null })
+      .where(eq(centers.managerId, userId));
+
+    // Desasignar como head de departamentos
+    await db
+      .update(departments)
+      .set({ headUserId: null })
+      .where(eq(departments.headUserId, userId));
+
+    // Eliminar de participaciones en incidentes
+    await db
+      .delete(incidentParticipants)
+      .where(eq(incidentParticipants.userId, userId));
+
+    // Limpiar historial de incidentes
+    await db
+      .update(incidentHistory)
+      .set({ userId: null })
+      .where(eq(incidentHistory.userId, userId));
+
+    // Remover asignaciones en incidentes (assigneeId, supervisorId)
+    await db
+      .update(incidents)
+      .set({ 
+        assigneeId: null,
+        supervisorId: null 
+      })
+      .where(or(
+        eq(incidents.assigneeId, userId),
+        eq(incidents.supervisorId, userId)
+      ));
+
+    // Eliminar action plans asignados al usuario (en lugar de nullificar)
+    await db
+      .delete(actionPlans)
+      .where(eq(actionPlans.assigneeId, userId));
+    
+  } catch (error) {
+    console.error('Error removing user references:', error);
+    throw error;
+  }
+}
 // server/storage.ts - Optimizar consultas del dashboard
 
 async getDashboardStats(userId?: string) {
