@@ -61,6 +61,30 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+   // CORS si es necesario
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+    } else {
+      next();
+    }
+  });
+
+  // Debug middleware para todos los requests de action plans
+  app.use('/api/incidents/*/action-plans', (req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    console.log('Headers:', req.headers);
+    console.log('Body:', req.body);
+    console.log('Content-Type:', req.get('Content-Type'));
+    next();
+  });
   // Auth routes - JWT instead of Replit
   app.post('/api/auth/login', async (req, res) => {
     try {
@@ -445,89 +469,81 @@ app.get('/api/departments', isAuthenticated, async (req: any, res) => {
 
   // Action plans endpoints
 
+// En server/routes.ts - Endpoint POST corregido con manejo de campos requeridos
+
 app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const { participants = [], ...actionPlanData } = req.body;
+    const userId = req.user.id;
+
+    console.log("Creating action plan for incident:", id);
+    console.log("Request body:", req.body);
+    console.log("User ID:", userId);
+
+    // Verificar que la incidencia existe
+    const incident = await storage.getIncidentById(id);
+    if (!incident) {
+      console.log("Incident not found:", id);
+      return res.status(404).json({ message: "Incident not found" });
+    }
+
+    // Validar campos requeridos antes del schema
+    const { title, description, assigneeId, dueDate } = req.body;
     
-    console.log('📋 Creating action plan for incident:', id);
-    console.log('📋 Action plan data:', actionPlanData);
-    console.log('👥 Participants:', participants);
-
-    // Validar datos requeridos
-    if (!actionPlanData.title?.trim()) {
+    if (!title || !description || !assigneeId || !dueDate) {
       return res.status(400).json({ 
-        message: "El título es obligatorio" 
+        message: "Missing required fields", 
+        required: ["title", "description", "assigneeId", "dueDate"],
+        received: { title, description, assigneeId, dueDate }
       });
     }
 
-    if (!actionPlanData.assigneeId) {
-      return res.status(400).json({ 
-        message: "El responsable es obligatorio" 
-      });
-    }
-
-    if (!actionPlanData.dueDate) {
-      return res.status(400).json({ 
-        message: "La fecha límite es obligatoria" 
-      });
-    }
-
-    // Preparar datos para crear el plan
-    const planData = {
+    // Preparar los datos del plan de acción
+    const data = {
       incidentId: id,
-      title: actionPlanData.title.trim(),
-      description: actionPlanData.description?.trim() || '',
-      assigneeId: actionPlanData.assigneeId,
-      priority: actionPlanData.priority || 'medium',
-      dueDate: new Date(actionPlanData.dueDate),
-      startDate: actionPlanData.startDate ? new Date(actionPlanData.startDate) : null,
-      status: 'pending' as const
+      title: title.trim(),
+      description: description.trim(),
+      assigneeId: assigneeId,
+      dueDate: new Date(dueDate),
+      status: "pending", // Default status
+      departmentId: req.body.departmentId || null
     };
 
-    console.log('📋 Final plan data:', planData);
+    console.log("Prepared data:", data);
 
-    // Crear el plan de acción
-    const actionPlan = await storage.createActionPlan(planData);
-    console.log('✅ Action plan created:', actionPlan.id);
+    // Validar los datos usando el schema
+    try {
+      const validatedData = insertActionPlanSchema.parse(data);
+      console.log("Data validated successfully:", validatedData);
 
-    // Agregar participantes si existen
-    if (participants && Array.isArray(participants) && participants.length > 0) {
-      console.log('👥 Adding participants to action plan...');
-      
-      for (const userId of participants) {
-        if (userId && typeof userId === 'string') {
-          try {
-            await storage.addActionPlanParticipant({
-              actionPlanId: actionPlan.id,
-              userId,
-              role: 'participant'
-            });
-            console.log(`✅ Added participant: ${userId}`);
-          } catch (participantError) {
-            console.error(`❌ Error adding participant ${userId}:`, participantError);
-          }
-        }
+      // Crear el plan de acción
+      const actionPlan = await storage.createActionPlan(validatedData);
+      console.log("Action plan created:", actionPlan);
+
+      res.status(201).json(actionPlan);
+    } catch (schemaError) {
+      console.error("Schema validation error:", schemaError);
+      if (schemaError instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Schema validation failed", 
+          errors: schemaError.errors,
+          receivedData: data
+        });
       }
+      throw schemaError;
     }
 
-    // Obtener el plan completo con participantes y assignee
-    const completeActionPlans = await storage.getActionPlansByIncident(id);
-    const createdPlan = completeActionPlans.find(plan => plan.id === actionPlan.id);
-
-    console.log('🎉 Action plan creation completed');
-    res.status(201).json(createdPlan || actionPlan);
-
   } catch (error) {
-    console.error("❌ Error creating action plan:", error);
+    console.error("Error creating action plan:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    
-    res.status(500).json({ 
-      message: "No se pudo crear el plan de acción",
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error : undefined
-    });
+    // Asegurarse de devolver JSON siempre
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        message: "Failed to create action plan",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
   }
 });
 

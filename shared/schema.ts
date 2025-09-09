@@ -333,10 +333,34 @@ export const insertIncidentParticipantSchema = createInsertSchema(incidentPartic
   createdAt: true,
 });
 
-export const insertActionPlanSchema = createInsertSchema(actionPlans).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertActionPlanSchema = z.object({
+  incidentId: z.string().uuid("ID de incidencia inválido"),
+  title: z.string().min(1, "El título es requerido").max(500, "El título es muy largo"),
+  description: z.string().min(1, "La descripción es requerida"),
+  status: z.enum(["pending", "in_progress", "completed", "overdue"]).default("pending"),
+  assigneeId: z.string().min(1, "El responsable es requerido"),
+  departmentId: z.string().optional(),
+  dueDate: z.union([
+    z.string().transform((str) => new Date(str)),
+    z.date()
+  ]).refine((date) => date instanceof Date && !isNaN(date.getTime()), {
+    message: "La fecha límite debe ser una fecha válida",
+  }),
+});
+
+export const updateActionPlanSchema = z.object({
+  title: z.string().min(1, "El título es requerido").max(500, "El título es muy largo").optional(),
+  description: z.string().min(1, "La descripción es requerida").optional(),
+  status: z.enum(["pending", "in_progress", "completed", "overdue"]).optional(),
+  assigneeId: z.string().min(1, "El responsable es requerido").optional(),
+  departmentId: z.string().optional(),
+  dueDate: z.union([
+    z.string().transform((str) => new Date(str)),
+    z.date()
+  ]).refine((date) => date instanceof Date && !isNaN(date.getTime()), {
+    message: "La fecha límite debe ser una fecha válida",
+  }),
+  completedAt: z.date().optional().nullable(),
 });
 
 export const insertActionPlanParticipantSchema = createInsertSchema(actionPlanParticipants).omit({

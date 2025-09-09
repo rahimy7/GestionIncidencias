@@ -122,30 +122,53 @@ const fetchCurrentUser = async () => {
 };
 
   // CORREGIDO: createActionPlanMutation
-  const createActionPlanMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await apiRequest(`/api/incidents/${incident.id}/action-plans`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Éxito",
-        description: "Plan de acción creado correctamente",
-      });
-      actionPlanForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["/api/incidents"] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "No se pudo crear el plan de acción",
-        variant: "destructive",
-      });
-    },
-  });
+const createActionPlanMutation = useMutation({
+  mutationFn: async (data: any) => {
+    console.log("Frontend: Sending action plan data:", data);
+    
+    const response = await apiRequest(`/api/incidents/${incident.id}/action-plans`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    
+    console.log("Frontend: Response status:", response.status);
+    console.log("Frontend: Response headers:", response.headers);
+    
+    // Check if response is actually JSON
+    const contentType = response.headers.get('content-type');
+    console.log("Frontend: Content type:", contentType);
+    
+    if (!contentType || !contentType.includes('application/json')) {
+      // If not JSON, get the text to see what we got
+      const text = await response.text();
+      console.error("Frontend: Expected JSON but got:", text.substring(0, 200));
+      throw new Error('Server returned HTML instead of JSON. Check server logs.');
+    }
+    
+    const result = await response.json();
+    console.log("Frontend: Parsed JSON result:", result);
+    
+    return result;
+  },
+  onSuccess: (data) => {
+    console.log("Frontend: Action plan created successfully:", data);
+    toast({
+      title: "Éxito",
+      description: "Plan de acción creado correctamente",
+    });
+    actionPlanForm.reset();
+    queryClient.invalidateQueries({ queryKey: ["/api/incidents"] });
+  },
+  onError: (error) => {
+    console.error("Frontend: Error creating action plan:", error);
+    toast({
+      title: "Error",
+      description: "No se pudo crear el plan de acción",
+      variant: "destructive",
+    });
+  },
+});
+
 
   // CORREGIDO: handleGetUploadParameters
   const handleGetUploadParameters = async () => {
@@ -209,27 +232,26 @@ const fetchCurrentUser = async () => {
 const onCreateActionPlan = async (values: any) => {
   if (!incident?.id) return;
   
+  console.log("Frontend: Form values received:", values);
+  
+  // Preparar datos para enviar
+  const actionPlanData = {
+    title: values.title,
+    description: values.description,
+    assigneeId: values.assigneeId,
+    dueDate: values.dueDate ? values.dueDate.toISOString() : null
+  };
+  
+  console.log("Frontend: Prepared data for API:", actionPlanData);
+  
   setIsCreatingActionPlan(true);
   try {
-    // ✅ Usar la mutation en lugar de llamarse a sí misma
-    await createActionPlanMutation.mutateAsync({
-      incidentId: incident.id,
-      ...values,
-    });
+    await createActionPlanMutation.mutateAsync(actionPlanData);
     
     actionPlanForm.reset();
     setSelectedParticipantId('');
-    
-    toast({
-      title: "Plan de acción creado",
-      description: "El plan de acción se ha creado exitosamente.",
-    });
   } catch (error) {
-    toast({
-      title: "Error",
-      description: "No se pudo crear el plan de acción.",
-      variant: "destructive",
-    });
+    console.error("Frontend: Failed to create action plan:", error);
   } finally {
     setIsCreatingActionPlan(false);
   }
