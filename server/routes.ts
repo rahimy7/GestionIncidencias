@@ -1329,6 +1329,149 @@ app.get('/api/centers', isAuthenticated, async (req: any, res) => {
   }
 });
 
+function getActionPlanStatusWithOverdue(
+  requestedStatus: "pending" | "in_progress" | "completed", // CORREGIDO: Sin 'overdue'
+  dueDate: Date,
+  currentStatus: string
+): "pending" | "in_progress" | "completed" | "overdue" {
+  // Si se está marcando como completado, siempre permitir
+  if (requestedStatus === 'completed') {
+    return 'completed';
+  }
+  
+  // Si ya está completado, no cambiar
+  if (currentStatus === 'completed') {
+    return 'completed';
+  }
+  
+  // Verificar si está vencido
+  const now = new Date();
+  const isOverdue = now > dueDate;
+  
+  // Si está vencido y no completado, marcar como overdue
+  if (isOverdue) {
+    return 'overdue';
+  }
+  
+  // En otros casos, usar el estado solicitado
+  return requestedStatus;
+}
+
+// server/routes.ts - Agregar estas rutas al final del archivo, antes del return httpServer
+
+// ===== RUTAS DE PLANES DE ACCIÓN =====
+
+// GET /api/action-plans/assigned - Obtener planes de acción asignados al usuario
+app.get('/api/action-plans/assigned', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('Fetching action plans for user:', userId);
+    
+    // Obtener planes donde el usuario es responsable o participante
+    const assignedActionPlans = await storage.getActionPlansByUser(userId);
+    
+    res.json(assignedActionPlans);
+  } catch (error) {
+    console.error('Error fetching assigned action plans:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// PUT /api/action-plans/:id/status - Actualizar estado de plan de acción
+
+app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) => {
+  try {
+    const planId = req.params.id;
+    const userId = req.user.id;
+    console.log(`User ${userId} updating action plan ${planId} status`);
+    
+    // Permitir solo transiciones válidas que el usuario puede hacer
+    const updateSchema = z.object({
+      status: z.enum(['pending', 'in_progress', 'completed']), // No permitir que el usuario establezca 'overdue' manualmente
+      completedAt: z.string().optional()
+    });
+
+    const validationResult = updateSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        error: 'Datos inválidos',
+        details: validationResult.error.issues
+      });
+    }
+
+    const { status, completedAt } = validationResult.data;
+
+    // Verificar que el usuario puede actualizar este plan
+    const actionPlan = await storage.getActionPlanById(planId);
+    if (!actionPlan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado' });
+    }
+
+    // Verificar permisos (responsable o participante)
+    const hasPermission = actionPlan.assigneeId === userId || 
+      (actionPlan.participants && actionPlan.participants.some((p: any) => p.userId === userId));
+    
+    if (!hasPermission) {
+      return res.status(403).json({ 
+        error: 'No tienes permisos para actualizar este plan',
+        userRole: actionPlan.assigneeId === userId ? 'assignee' : 'none'
+      });
+    }
+
+    // Determinar el estado final considerando vencimientos
+    const finalStatus = getActionPlanStatusWithOverdue(
+      status, // Ahora coincide con el tipo
+      new Date(actionPlan.dueDate),
+      actionPlan.status
+    );
+
+    const updatedPlan = await storage.updateActionPlanStatus(planId, {
+      status: finalStatus,
+      completedAt: status === 'completed' ? new Date() : (completedAt ? new Date(completedAt) : null),
+      updatedBy: userId
+    });
+
+    res.json(updatedPlan);
+  } catch (error) {
+    console.error('Error updating action plan status:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+// GET /api/action-plans/:id - Obtener detalle de un plan de acción específico
+app.get('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
+  try {
+    const planId = req.params.id;
+    const userId = req.user.id;
+    
+    const actionPlan = await storage.getActionPlanById(planId);
+    if (!actionPlan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado' });
+    }
+
+    // Verificar que el usuario tiene acceso a este plan
+    const hasAccess = actionPlan.assigneeId === userId || 
+      (actionPlan.participants && actionPlan.participants.some((p: any) => p.userId === userId));
+    
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'No tienes acceso a este plan de acción' });
+    }
+
+    res.json(actionPlan);
+  } catch (error) {
+    console.error('Error fetching action plan details:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Endpoint para estadísticas de tendencias
 app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   try {

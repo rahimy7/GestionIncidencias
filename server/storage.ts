@@ -1546,6 +1546,147 @@ async getCenter(centerId: string): Promise<Center | null> {
   }
 }
 
+// server/storage.ts - Métodos corregidos para planes de acción
+
+// Agregar estos métodos a la clase Storage
+
+async getActionPlansByUser(userId: string) {
+  try {
+    // Obtener planes donde el usuario es responsable
+    const assignedPlans = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(actionPlans.assigneeId, userId))
+      .orderBy(desc(actionPlans.createdAt));
+
+    // Obtener planes donde el usuario es participante
+    const participantPlans = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(actionPlanParticipants.userId, userId))
+      .orderBy(desc(actionPlans.createdAt));
+
+    // Combinar y eliminar duplicados
+    const allPlans = [...assignedPlans, ...participantPlans];
+    const uniquePlans = allPlans.filter((plan, index, self) => 
+      index === self.findIndex(p => p.action_plans.id === plan.action_plans.id)
+    );
+
+    // Procesar cada plan para incluir participantes
+    const plansWithDetails = [];
+    for (const planRow of uniquePlans) {
+      // Obtener participantes del plan
+      const planParticipants = await db
+        .select()
+        .from(actionPlanParticipants)
+        .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+        .where(eq(actionPlanParticipants.actionPlanId, planRow.action_plans.id));
+
+      plansWithDetails.push({
+        ...planRow.action_plans,
+        assignee: planRow.users,
+        incident: {
+          ...planRow.incidents,
+          center: planRow.centers,
+          type: planRow.incident_types
+        },
+        participants: planParticipants.map(p => ({
+          ...p.action_plan_participants,
+          user: p.users
+        })),
+        // Indicar el rol del usuario en este plan
+        userRole: planRow.action_plans.assigneeId === userId ? 'assignee' : 'participant'
+      });
+    }
+
+    return plansWithDetails;
+  } catch (error) {
+    console.error('Error fetching action plans by user:', error);
+    throw error;
+  }
+}
+
+async getActionPlanById(planId: string) {
+  try {
+    const result = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .where(eq(actionPlans.id, planId))
+      .limit(1);
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const planRow = result[0];
+
+    // Obtener participantes
+    const participants = await db
+      .select()
+      .from(actionPlanParticipants)
+      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+      .where(eq(actionPlanParticipants.actionPlanId, planId));
+
+    return {
+      ...planRow.action_plans,
+      assignee: planRow.users,
+      incident: planRow.incidents,
+      participants: participants.map(p => ({
+        ...p.action_plan_participants,
+        user: p.users
+      }))
+    };
+  } catch (error) {
+    console.error('Error fetching action plan by id:', error);
+    throw error;
+  }
+}
+
+async updateActionPlanStatus(planId: string, updateData: {
+  status: "pending" | "in_progress" | "completed" | "overdue";
+  completedAt?: Date | null;
+  updatedBy: string;
+}) {
+  try {
+    // Usar el tipo correcto para el status
+    const updateObject: any = {
+      status: updateData.status,
+      updatedAt: new Date()
+    };
+
+    // Solo agregar completedAt si se proporciona
+    if (updateData.completedAt !== undefined) {
+      updateObject.completedAt = updateData.completedAt;
+    }
+
+    await db
+      .update(actionPlans)
+      .set(updateObject)
+      .where(eq(actionPlans.id, planId));
+
+    // Registrar en historial si existe tabla de historial para planes
+    // Si no existe, considera agregar esta funcionalidad
+
+    return await this.getActionPlanById(planId);
+  } catch (error) {
+    console.error('Error updating action plan status:', error);
+    throw error;
+  }
+}
+
+
+
 
 
 
