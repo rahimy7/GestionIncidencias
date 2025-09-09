@@ -444,27 +444,169 @@ app.get('/api/departments', isAuthenticated, async (req: any, res) => {
 });
 
   // Action plans endpoints
+
 app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const { participants = [], ...actionPlanData } = req.body;
     
-    // Convertir dueDate string a Date
-    const data = {
-      ...req.body,
+    console.log('📋 Creating action plan for incident:', id);
+    console.log('📋 Action plan data:', actionPlanData);
+    console.log('👥 Participants:', participants);
+
+    // Validar datos requeridos
+    if (!actionPlanData.title?.trim()) {
+      return res.status(400).json({ 
+        message: "El título es obligatorio" 
+      });
+    }
+
+    if (!actionPlanData.assigneeId) {
+      return res.status(400).json({ 
+        message: "El responsable es obligatorio" 
+      });
+    }
+
+    if (!actionPlanData.dueDate) {
+      return res.status(400).json({ 
+        message: "La fecha límite es obligatoria" 
+      });
+    }
+
+    // Preparar datos para crear el plan
+    const planData = {
       incidentId: id,
-      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null
+      title: actionPlanData.title.trim(),
+      description: actionPlanData.description?.trim() || '',
+      assigneeId: actionPlanData.assigneeId,
+      priority: actionPlanData.priority || 'medium',
+      dueDate: new Date(actionPlanData.dueDate),
+      startDate: actionPlanData.startDate ? new Date(actionPlanData.startDate) : null,
+      status: 'pending' as const
     };
 
-    const validatedData = insertActionPlanSchema.parse(data);
-    const actionPlan = await storage.createActionPlan(validatedData);
-    res.status(201).json(actionPlan);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid data", errors: error.errors });
+    console.log('📋 Final plan data:', planData);
+
+    // Crear el plan de acción
+    const actionPlan = await storage.createActionPlan(planData);
+    console.log('✅ Action plan created:', actionPlan.id);
+
+    // Agregar participantes si existen
+    if (participants && Array.isArray(participants) && participants.length > 0) {
+      console.log('👥 Adding participants to action plan...');
+      
+      for (const userId of participants) {
+        if (userId && typeof userId === 'string') {
+          try {
+            await storage.addActionPlanParticipant({
+              actionPlanId: actionPlan.id,
+              userId,
+              role: 'participant'
+            });
+            console.log(`✅ Added participant: ${userId}`);
+          } catch (participantError) {
+            console.error(`❌ Error adding participant ${userId}:`, participantError);
+          }
+        }
+      }
     }
-    console.error("Error creating action plan:", error);
-    res.status(500).json({ message: "Failed to create action plan" });
+
+    // Obtener el plan completo con participantes y assignee
+    const completeActionPlans = await storage.getActionPlansByIncident(id);
+    const createdPlan = completeActionPlans.find(plan => plan.id === actionPlan.id);
+
+    console.log('🎉 Action plan creation completed');
+    res.status(201).json(createdPlan || actionPlan);
+
+  } catch (error) {
+    console.error("❌ Error creating action plan:", error);
+    
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    res.status(500).json({ 
+      message: "No se pudo crear el plan de acción",
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
+    });
+  }
+});
+
+
+app.get("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const actionPlans = await storage.getActionPlansByIncident(id);
+    res.json(actionPlans);
+  } catch (error) {
+    console.error("Error fetching action plans:", error);
+    res.status(500).json({ message: "Failed to fetch action plans" });
+  }
+});
+
+// Actualizar plan de acción
+app.patch("/api/action-plans/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    console.log('📝 Updating action plan:', id, updates);
+
+    // Si se está completando el plan, agregar fecha de completado
+    if (updates.status === 'completed') {
+      updates.completedAt = new Date();
+    }
+
+    const updatedPlan = await storage.updateActionPlan(id, updates);
+    res.json(updatedPlan);
+
+  } catch (error) {
+    console.error("Error updating action plan:", error);
+    res.status(500).json({ 
+      message: "No se pudo actualizar el plan de acción",
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
+});
+
+// Agregar participante a plan de acción
+app.post("/api/action-plans/:id/participants", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role = 'participant' } = req.body;
+    
+    const participant = await storage.addActionPlanParticipant({
+      actionPlanId: id,
+      userId,
+      role
+    });
+    
+    res.status(201).json(participant);
+  } catch (error) {
+    console.error("Error adding action plan participant:", error);
+    res.status(500).json({ message: "Failed to add participant" });
+  }
+});
+
+// Remover participante de plan de acción
+app.delete("/api/action-plans/:id/participants/:userId", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id, userId } = req.params;
+    await storage.removeActionPlanParticipant(id, userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error removing action plan participant:", error);
+    res.status(500).json({ message: "Failed to remove participant" });
+  }
+});
+// Obtener participantes de un plan de acción
+app.get("/api/action-plans/:id/participants", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const participants = await storage.getActionPlanParticipants(id);
+    res.json(participants);
+  } catch (error) {
+    console.error("Error fetching action plan participants:", error);
+    res.status(500).json({ message: "Failed to fetch participants" });
   }
 });
 

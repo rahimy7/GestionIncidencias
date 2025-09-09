@@ -29,6 +29,9 @@ import {
   UpdateDepartment,
   UpdateCenter,
   DepartmentWithHead,
+  ActionPlanParticipant,
+  InsertActionPlanParticipant,
+  actionPlanParticipants,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
@@ -73,9 +76,17 @@ export interface IStorage {
   getIncidentsByAssignee(userId: string): Promise<(Incident & { center?: Center; reporter?: User })[]>;
   
   // Action Plans operations
-  getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { assignee: User })[]>;
+ getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { 
+    assignee: User; 
+    participants?: (ActionPlanParticipant & { user: User })[];
+  })[]>;
   createActionPlan(actionPlan: InsertActionPlan): Promise<ActionPlan>;
   updateActionPlan(id: string, updates: Partial<InsertActionPlan>): Promise<ActionPlan>;
+
+   addActionPlanParticipant(participant: InsertActionPlanParticipant): Promise<ActionPlanParticipant>;
+  removeActionPlanParticipant(actionPlanId: string, userId: string): Promise<void>;
+  getActionPlanParticipants(actionPlanId: string): Promise<(ActionPlanParticipant & { user: User })[]>;
+
 
   // Participants operations
   addIncidentParticipant(participant: InsertIncidentParticipant): Promise<IncidentParticipant>;
@@ -264,7 +275,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Action Plans operations
-  async getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { assignee: User })[]> {
+
+ async getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { 
+    assignee: User; 
+    participants?: (ActionPlanParticipant & { user: User })[];
+  })[]> {
     const result = await db
       .select()
       .from(actionPlans)
@@ -272,20 +287,38 @@ export class DatabaseStorage implements IStorage {
       .where(eq(actionPlans.incidentId, incidentId))
       .orderBy(actionPlans.createdAt);
 
-    return result.map(row => ({
-      ...row.action_plans,
-      assignee: row.users!
-    }));
+    const actionPlansWithDetails = [];
+
+    for (const row of result) {
+      // Obtener participantes del plan
+      const participantsResult = await db
+        .select()
+        .from(actionPlanParticipants)
+        .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+        .where(eq(actionPlanParticipants.actionPlanId, row.action_plans.id));
+
+      actionPlansWithDetails.push({
+        ...row.action_plans,
+        assignee: row.users!,
+        participants: participantsResult.map(p => ({
+          ...p.action_plan_participants,
+          user: p.users!
+        }))
+      });
+    }
+
+    return actionPlansWithDetails;
   }
 
- async createActionPlan(actionPlan: InsertActionPlan): Promise<ActionPlan> {
-  const [newActionPlan] = await db
-    .insert(actionPlans)
-    .values({
-      ...actionPlan,
-    
-    })
-    .returning();
+  async createActionPlan(actionPlan: InsertActionPlan): Promise<ActionPlan> {
+    const [newActionPlan] = await db
+      .insert(actionPlans)
+      .values({
+        ...actionPlan,
+        startDate: actionPlan.startDate ? new Date(actionPlan.startDate) : null,
+        dueDate: new Date(actionPlan.dueDate),
+      })
+      .returning();
 
     // Add to incident history
     await this.addIncidentHistory({
@@ -299,14 +332,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateActionPlan(id: string, updates: Partial<InsertActionPlan>): Promise<ActionPlan> {
+    const updateData: any = { ...updates, updatedAt: new Date() };
+    
+    // Convertir fechas si están presentes
+    if (updates.startDate) {
+      updateData.startDate = new Date(updates.startDate);
+    }
+    if (updates.dueDate) {
+      updateData.dueDate = new Date(updates.dueDate);
+    }
+
     const [updatedActionPlan] = await db
       .update(actionPlans)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updateData)
       .where(eq(actionPlans.id, id))
       .returning();
 
     return updatedActionPlan;
   }
+
+  // Action Plan Participants operations - NUEVO
+  async addActionPlanParticipant(participant: InsertActionPlanParticipant): Promise<ActionPlanParticipant> {
+    const [newParticipant] = await db
+      .insert(actionPlanParticipants)
+      .values(participant)
+      .returning();
+
+    return newParticipant;
+  }
+
+  async removeActionPlanParticipant(actionPlanId: string, userId: string): Promise<void> {
+    await db
+      .delete(actionPlanParticipants)
+      .where(
+        and(
+          eq(actionPlanParticipants.actionPlanId, actionPlanId),
+          eq(actionPlanParticipants.userId, userId)
+        )
+      );
+  }
+
+  async getActionPlanParticipants(actionPlanId: string): Promise<(ActionPlanParticipant & { user: User })[]> {
+    const result = await db
+      .select()
+      .from(actionPlanParticipants)
+      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+      .where(eq(actionPlanParticipants.actionPlanId, actionPlanId))
+      .orderBy(actionPlanParticipants.createdAt);
+
+    return result.map(row => ({
+      ...row.action_plan_participants,
+      user: row.users!
+    }));
+  }
+
 
   // Participants operations
   async addIncidentParticipant(participant: InsertIncidentParticipant): Promise<IncidentParticipant> {
@@ -1069,7 +1148,7 @@ async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
         .leftJoin(users, eq(incidentParticipants.userId, users.id))
         .where(eq(incidentParticipants.incidentId, row.incidents.id));
 
-      // Get action plans
+      // Get action plans - ESTA LÍNEA FALTABA
       const actionPlansResult = await db
         .select()
         .from(actionPlans)
@@ -1084,6 +1163,26 @@ async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
         .where(eq(incidentHistory.incidentId, row.incidents.id))
         .orderBy(desc(incidentHistory.createdAt));
 
+      // Procesar action plans con participantes
+      const actionPlansWithParticipants = [];
+      for (const planRow of actionPlansResult) {
+        // Obtener participantes del plan
+        const planParticipants = await db
+          .select()
+          .from(actionPlanParticipants)
+          .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+          .where(eq(actionPlanParticipants.actionPlanId, planRow.action_plans.id));
+
+        actionPlansWithParticipants.push({
+          ...planRow.action_plans,
+          assignee: planRow.users!,
+          participants: planParticipants.map(p => ({
+            ...p.action_plan_participants,
+            user: p.users!
+          }))
+        });
+      }
+
       incidentsWithDetails.push({
         ...row.incidents,
         reporter: row.reporterUser!,
@@ -1094,15 +1193,12 @@ async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
           ...p.incident_participants,
           user: p.users!
         })),
-        actionPlans: actionPlansResult.map(a => ({
-          ...a.action_plans,
-          assignee: a.users!
-        })),
+        actionPlans: actionPlansWithParticipants,
         history: historyResult.map(h => ({
           ...h.incident_history,
           user: h.users || undefined
         }))
-      } as IncidentWithDetails);
+      });
     }
 
     return incidentsWithDetails;
@@ -1111,6 +1207,7 @@ async getIncidents(filters: any = {}): Promise<IncidentWithDetails[]> {
     throw error;
   }
 }
+
 
 // Método para obtener datos de tendencias
 async getTrendData() {

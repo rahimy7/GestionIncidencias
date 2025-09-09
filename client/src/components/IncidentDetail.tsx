@@ -23,6 +23,7 @@ import type { IncidentWithDetails } from "@shared/schema";
 import type { UploadResult } from "@uppy/core";
 import { ParticipantSearch } from '@/components/ParticipantSearch';
 import { ParticipantSelector } from "@/components/ParticipantSelector";
+import { ActionPlansSection } from "./ActionPlansSection";
 
 
 interface IncidentDetailProps {
@@ -114,6 +115,11 @@ const fetchCurrentUser = async () => {
       });
     },
   });
+  const refetchIncident = async () => {
+  return queryClient.invalidateQueries({ 
+    queryKey: [`/api/incidents/${incident.id}`] 
+  });
+};
 
   // CORREGIDO: createActionPlanMutation
   const createActionPlanMutation = useMutation({
@@ -324,11 +330,12 @@ const handleRemoveParticipant = async (userId: string) => {
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="details">Detalles</TabsTrigger>
+            <TabsTrigger value="action-plans">Planes de Acción</TabsTrigger>
             <TabsTrigger value="participants">Participantes</TabsTrigger>
-            <TabsTrigger value="actions">Acciones</TabsTrigger>
-            <TabsTrigger value="timeline">Cronología</TabsTrigger>
+            <TabsTrigger value="history">Historial</TabsTrigger>
+            <TabsTrigger value="evidence">Evidencia</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="space-y-6">
@@ -469,141 +476,24 @@ const handleRemoveParticipant = async (userId: string) => {
               </div>
             </div>
           </TabsContent>
-<TabsContent value="participants" className="space-y-4">
-  <ParticipantSearch
-    incidentCenterId={incident.centerId}
-    currentParticipants={participants.map(p => p.userId)}
-    onAddParticipant={(userId, user) => handleAddParticipant(userId, 'participant')}
-    onRemoveParticipant={handleRemoveParticipant}
-  />
-</TabsContent>
-       
 
-          <TabsContent value="actions" className="space-y-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-foreground flex items-center gap-2">
-                    <ListCheck className="h-5 w-5" />
-                    Planes de Acción
-                  </h3>
-                </div>
-                
-                {/* Action Plans List */}
-                <div className="space-y-3 mb-6">
-                  {incident.actionPlans?.map((actionPlan) => (
-                    <Card key={actionPlan.id} className="border">
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-medium text-foreground">{actionPlan.title}</h4>
-                          <Badge variant="outline">
-                            {actionPlan.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">{actionPlan.description}</p>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Asignado a: {actionPlan.assignee?.firstName || actionPlan.assignee?.email}</span>
-                          <span>Vence: {actionPlan.dueDate ? formatDate(actionPlan.dueDate.toString()) : 'Sin fecha'}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                {/* New Action Plan Form */}
-            <Card>
-  <CardContent className="p-4">
-    <h4 className="font-medium mb-3">Nuevo Plan de Acción</h4>
-    <Form {...actionPlanForm}>
-      <form onSubmit={actionPlanForm.handleSubmit(onCreateActionPlan)} className="space-y-3">
-        <FormField
-          control={actionPlanForm.control}
-          name="title"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Título</FormLabel>
-              <FormControl>
-                <Input placeholder="Título del plan de acción" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <FormField
-          control={actionPlanForm.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Descripción</FormLabel>
-              <FormControl>
-                <Textarea 
-                  placeholder="Descripción detallada del plan de acción" 
-                  {...field} 
-                  rows={3}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Reemplazar el campo assigneeId con el ParticipantSelector */}
-        <FormField
-          control={actionPlanForm.control}
-          name="assigneeId"
-          render={({ field }) => (
-            <FormItem>
-              <FormControl>
-                <ParticipantSelector
-                  participants={participants}
-                  selectedUserId={field.value}
-                  onSelectUser={(userId, user) => {
-                    field.onChange(userId);
-                    setSelectedParticipantId(userId);
-                  }}
-                  label="Responsable del plan"
-                  placeholder="Seleccionar responsable"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-       <FormField
-  control={actionPlanForm.control}
-  name="dueDate"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>Fecha límite</FormLabel>
-      <FormControl>
-        <Input 
-          type="date" 
-          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-          onChange={(e) => {
-            const dateValue = e.target.value ? new Date(e.target.value + 'T00:00:00.000Z') : null;
-            field.onChange(dateValue);
-          }}
-        />
-      </FormControl>
-      <FormMessage />
-    </FormItem>
-  )}
-/>
-        
-        <Button type="submit" className="w-full" disabled={isCreatingActionPlan}>
-          {isCreatingActionPlan ? 'Creando...' : 'Crear Plan de Acción'}
-        </Button>
-      </form>
-    </Form>
-  </CardContent>
-</Card>
-              </CardContent>
-            </Card>
+          <TabsContent value="action-plans" className="space-y-4">
+            <ActionPlansSection 
+              incident={incident} 
+              onUpdate={refetchIncident}
+            />
+          </TabsContent>
+          
+          <TabsContent value="participants" className="space-y-4">
+            <ParticipantSearch
+              incidentCenterId={incident.centerId}
+              currentParticipants={participants.map(p => p.userId)}
+              onAddParticipant={(userId, user) => handleAddParticipant(userId, 'participant')}
+              onRemoveParticipant={handleRemoveParticipant}
+            />
           </TabsContent>
 
-          <TabsContent value="timeline" className="space-y-4">
+          <TabsContent value="history" className="space-y-4">
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -629,6 +519,41 @@ const handleRemoveParticipant = async (userId: string) => {
                       </div>
                     </div>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="evidence" className="space-y-4">
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {incident.evidenceFiles?.map((file, index) => (
+                    <div key={index} className="relative group cursor-pointer">
+                      <img
+                        src={file}
+                        alt={`Evidence ${index + 1}`}
+                        className="w-full h-32 object-cover rounded-md border border-border"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
+                        <Button variant="ghost" size="sm" className="text-white">
+                          Ver Completa
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <ObjectUploader
+                    maxNumberOfFiles={5}
+                    maxFileSize={10485760}
+                    onGetUploadParameters={handleGetUploadParameters}
+                    onComplete={handleUploadComplete}
+                    buttonClassName="w-full h-32 border border-dashed border-muted-foreground/25 rounded-md flex flex-col items-center justify-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
+                  >
+                    <Camera className="h-8 w-8 mb-2" />
+                    <span>Agregar Evidencia</span>
+                  </ObjectUploader>
                 </div>
               </CardContent>
             </Card>

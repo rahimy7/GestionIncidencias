@@ -167,19 +167,27 @@ export const actionPlans = pgTable("action_plans", {
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description").notNull(),
   status: actionStatusEnum("status").default("pending").notNull(),
+  priority: incidentPriorityEnum("priority").default("medium").notNull(), // NUEVO CAMPO
   
   // Assignment
   assigneeId: varchar("assignee_id").references(() => users.id).notNull(),
   departmentId: varchar("department_id"),
   
-  // Timeline
+  // Timeline - CAMPOS ACTUALIZADOS
+  startDate: timestamp("start_date"), // NUEVO CAMPO
   dueDate: timestamp("due_date").notNull(),
   completedAt: timestamp("completed_at"),
   
-
-  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const actionPlanParticipants = pgTable("action_plan_participants", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  actionPlanId: uuid("action_plan_id").references(() => actionPlans.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  role: varchar("role").default("participant").notNull(), // participant, reviewer, supervisor
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Incident timeline/history table
@@ -268,13 +276,25 @@ export const incidentParticipantsRelations = relations(incidentParticipants, ({ 
   }),
 }));
 
-export const actionPlansRelations = relations(actionPlans, ({ one }) => ({
+export const actionPlansRelations = relations(actionPlans, ({ one, many }) => ({
   incident: one(incidents, {
     fields: [actionPlans.incidentId],
     references: [incidents.id],
   }),
   assignee: one(users, {
     fields: [actionPlans.assigneeId],
+    references: [users.id],
+  }),
+  participants: many(actionPlanParticipants), // NUEVA RELACIÓN
+}));
+
+export const actionPlanParticipantsRelations = relations(actionPlanParticipants, ({ one }) => ({
+  actionPlan: one(actionPlans, {
+    fields: [actionPlanParticipants.actionPlanId],
+    references: [actionPlans.id],
+  }),
+  user: one(users, {
+    fields: [actionPlanParticipants.userId],
     references: [users.id],
   }),
 }));
@@ -319,6 +339,11 @@ export const insertActionPlanSchema = createInsertSchema(actionPlans).omit({
   updatedAt: true,
 });
 
+export const insertActionPlanParticipantSchema = createInsertSchema(actionPlanParticipants).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertIncidentHistorySchema = createInsertSchema(incidentHistory).omit({
   id: true,
   createdAt: true,
@@ -358,8 +383,10 @@ export type InsertIncident = z.infer<typeof insertIncidentSchema>;
 export type Incident = typeof incidents.$inferSelect;
 export type InsertIncidentParticipant = z.infer<typeof insertIncidentParticipantSchema>;
 export type IncidentParticipant = typeof incidentParticipants.$inferSelect;
-export type InsertActionPlan = z.infer<typeof insertActionPlanSchema>;
+export type InsertActionPlan = typeof actionPlans.$inferInsert;
 export type ActionPlan = typeof actionPlans.$inferSelect;
+export type ActionPlanParticipant = typeof actionPlanParticipants.$inferSelect;
+export type InsertActionPlanParticipant = typeof actionPlanParticipants.$inferInsert;
 export type InsertIncidentHistory = z.infer<typeof insertIncidentHistorySchema>;
 export type IncidentHistory = typeof incidentHistory.$inferSelect;
 export type Department = typeof departments.$inferSelect;
