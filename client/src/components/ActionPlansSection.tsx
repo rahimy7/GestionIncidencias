@@ -441,7 +441,8 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/action-plans', {
+      
+        const response = await fetch(`/api/incidents/${incident.id}/action-plans`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

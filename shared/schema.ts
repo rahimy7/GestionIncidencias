@@ -339,7 +339,7 @@ export const insertActionPlanSchema = z.object({
   description: z.string().min(1, "La descripción es requerida"),
   status: z.enum(["pending", "in_progress", "completed", "overdue"]).default("pending"),
   assigneeId: z.string().min(1, "El responsable es requerido"),
-  departmentId: z.string().optional(),
+  departmentId: z.string().nullable().optional(),
   dueDate: z.union([
     z.string().transform((str) => new Date(str)),
     z.date()
