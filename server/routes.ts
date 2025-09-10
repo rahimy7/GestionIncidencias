@@ -413,17 +413,40 @@ app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
     }
   });
 
-
-  app.get('/api/incidents/:id/participants', isAuthenticated, async (req: any, res) => {
+app.get('/api/incidents/:id', isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const participants = await storage.getIncidentParticipants(id);
-    res.json(participants);
+    
+    // Validar que el ID es un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      console.log(`Invalid UUID format: ${id}`);
+      return res.status(400).json({ 
+        error: 'Formato de ID inválido',
+        details: `El ID '${id}' no es un UUID válido`,
+        receivedId: id
+      });
+    }
+
+    const incident = await storage.getIncidentById(id);
+    if (!incident) {
+      console.log(`Incident not found: ${id}`);
+      return res.status(404).json({ 
+        error: 'Incidencia no encontrada',
+        details: `No se encontró la incidencia con ID ${id}`
+      });
+    }
+
+    res.json(incident);
   } catch (error) {
-    console.error("Error fetching participants:", error);
-    res.status(500).json({ message: "Failed to fetch participants" });
+    console.error(`Error fetching incident ${req.params.id}:`, error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido'
+    });
   }
 });
+
 
 // Agregar participante
 app.post('/api/incidents/:id/participants', isAuthenticated, async (req: any, res) => {
@@ -443,6 +466,7 @@ app.post('/api/incidents/:id/participants', isAuthenticated, async (req: any, re
     res.status(500).json({ message: "Failed to add participant" });
   }
 });
+
 
 // Remover participante
 app.delete('/api/incidents/:id/participants/:userId', isAuthenticated, async (req: any, res) => {
@@ -469,6 +493,35 @@ app.get('/api/departments', isAuthenticated, async (req: any, res) => {
 
   // Action plans endpoints
 
+app.get('/api/departments', isAuthenticated, async (req: any, res) => {
+  try {
+    const departments = await storage.getDepartments();
+    res.json(departments);
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Failed to fetch departments" });
+  }
+});
+
+// Action plans endpoints
+
+// Middleware específico SOLO para rutas de incidents
+app.use('/api/incidents/:id', (req, res, next) => {
+  const { id } = req.params;
+  console.log(`Validating incident ID: ${id}`);
+  
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    console.log(`Invalid UUID format: ${id}`);
+    return res.status(400).json({
+      error: 'Formato de ID inválido',
+      details: `El parámetro '${id}' no es un UUID válido`,
+      expected: 'UUID en formato: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+    });
+  }
+  
+  next();
+});
 // En server/routes.ts - Endpoint POST corregido con manejo de campos requeridos
 
 app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, res) => {
@@ -1359,23 +1412,38 @@ function getActionPlanStatusWithOverdue(
 
 // server/routes.ts - Agregar estas rutas al final del archivo, antes del return httpServer
 
-// ===== RUTAS DE PLANES DE ACCIÓN =====
-
-// GET /api/action-plans/assigned - Obtener planes de acción asignados al usuario
 app.get('/api/action-plans/assigned', isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.id;
     console.log('Fetching action plans for user:', userId);
     
+    // Verificar que el usuario existe
+    if (!userId) {
+      return res.status(401).json({ 
+        error: 'Usuario no autenticado',
+        details: 'No se encontró ID de usuario en la sesión'
+      });
+    }
+    
     // Obtener planes donde el usuario es responsable o participante
     const assignedActionPlans = await storage.getActionPlansByUser(userId);
+    
+    console.log(`Found ${assignedActionPlans.length} action plans for user ${userId}`);
     
     res.json(assignedActionPlans);
   } catch (error) {
     console.error('Error fetching assigned action plans:', error);
+    
+    // Log más detallado del error
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
+    
     res.status(500).json({ 
       error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Error desconocido',
+      timestamp: new Date().toISOString()
     });
   }
 });

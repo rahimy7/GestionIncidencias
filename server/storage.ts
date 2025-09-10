@@ -1629,11 +1629,11 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
       return null; // Usuario no tiene acceso
     }
 
-    // Obtener plan completo con relaciones
+    // Obtener plan completo con relaciones - usar JOIN en lugar de leftJoin para users
     const planData = await db
       .select()
       .from(actionPlans)
-      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .innerJoin(users, eq(actionPlans.assigneeId, users.id)) // Cambiar a innerJoin
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
       .leftJoin(centers, eq(incidents.centerId, centers.id))
       .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
@@ -1646,11 +1646,16 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
 
     const plan = planData[0];
 
-    // Obtener participantes
-    const participants = await db
+    // Verificar que tenemos los datos necesarios
+    if (!plan.users) {
+      throw new Error(`No user found for action plan ${actionPlanId}`);
+    }
+
+    // Obtener participantes con manejo seguro de nulls
+    const participantsData = await db
       .select()
       .from(actionPlanParticipants)
-      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+      .innerJoin(users, eq(actionPlanParticipants.userId, users.id)) // innerJoin para garantizar user
       .where(eq(actionPlanParticipants.actionPlanId, actionPlanId));
 
     // Obtener tareas
@@ -1675,22 +1680,22 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
       createdAt: plan.action_plans.createdAt,
       responsible: {
         id: plan.users.id,
-        name: `${plan.users.firstName} ${plan.users.lastName}`,
+        name: `${plan.users.firstName} ${plan.users.lastName}`.trim(),
         email: plan.users.email,
       },
-      participants: participants.map(p => ({
+      participants: participantsData.map(p => ({
         id: p.users.id,
-        name: `${p.users.firstName} ${p.users.lastName}`,
+        name: `${p.users.firstName} ${p.users.lastName}`.trim(),
         email: p.users.email,
         role: p.action_plan_participants.role,
       })),
       tasks,
       comments,
-      incident: {
+      incident: plan.incidents ? {
         id: plan.incidents.id,
         title: plan.incidents.title,
-        center: plan.centers.name,
-      },
+        center: plan.centers?.name || 'Sin centro asignado',
+      } : null,
       progress: Math.round(progress),
       userRole,
     };
@@ -1787,7 +1792,7 @@ async getActionPlanTasks(actionPlanId: string) {
     const tasks = await db
       .select()
       .from(actionPlanTasks)
-      .leftJoin(users, eq(actionPlanTasks.assigneeId, users.id))
+      .innerJoin(users, eq(actionPlanTasks.assigneeId, users.id)) // Cambiar a innerJoin
       .where(eq(actionPlanTasks.actionPlanId, actionPlanId))
       .orderBy(actionPlanTasks.createdAt);
 
@@ -1806,7 +1811,7 @@ async getActionPlanTasks(actionPlanId: string) {
         dueDate: taskRow.action_plan_tasks.dueDate,
         status: taskRow.action_plan_tasks.status,
         assigneeId: taskRow.action_plan_tasks.assigneeId,
-        assigneeName: `${taskRow.users.firstName} ${taskRow.users.lastName}`,
+        assigneeName: `${taskRow.users.firstName} ${taskRow.users.lastName}`.trim(),
         evidence: evidence.map(e => ({
           id: e.id,
           filename: e.filename,
@@ -1892,7 +1897,7 @@ async updateActionPlanTask(taskId: string, updates: {
   }
 }
 
-// Actualizar progreso del plan de acción
+
 async updateActionPlanProgress(actionPlanId: string) {
   try {
     const tasks = await db
@@ -1904,7 +1909,7 @@ async updateActionPlanProgress(actionPlanId: string) {
     const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
 
     // Actualizar estado del plan si es necesario
-    let newStatus = 'pending';
+    let newStatus: typeof actionPlans.status.enumValues[number] = 'pending';
     if (progress === 100) {
       newStatus = 'completed';
     } else if (progress > 0) {
@@ -1914,7 +1919,6 @@ async updateActionPlanProgress(actionPlanId: string) {
     await db
       .update(actionPlans)
       .set({
-        progress,
         status: newStatus,
         updatedAt: new Date(),
       })
@@ -1925,7 +1929,6 @@ async updateActionPlanProgress(actionPlanId: string) {
     throw error;
   }
 }
-
 // Agregar comentario al plan de acción
 async addActionPlanComment(commentData: {
   actionPlanId: string;
@@ -1988,7 +1991,9 @@ async getActionPlanComments(actionPlanId: string) {
         id: commentRow.action_plan_comments.id,
         content: commentRow.action_plan_comments.content,
         authorId: commentRow.action_plan_comments.authorId,
-        authorName: `${commentRow.users.firstName} ${commentRow.users.lastName}`,
+        authorName: commentRow.users 
+          ? `${commentRow.users.firstName} ${commentRow.users.lastName}`.trim()
+          : 'Usuario eliminado',
         createdAt: commentRow.action_plan_comments.createdAt,
         attachments: attachments.map(a => ({
           id: a.id,
@@ -2009,7 +2014,7 @@ async getActionPlanComments(actionPlanId: string) {
 
 // Actualizar plan de acción
 async updateActionPlan(actionPlanId: string, updates: {
-  status?: string;
+  status?: typeof actionPlans.status.enumValues[number];
   completedAt?: Date | null;
   completedBy?: string | null;
 }) {

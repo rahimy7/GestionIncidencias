@@ -168,6 +168,7 @@ export const actionPlans = pgTable("action_plans", {
   description: text("description").notNull(),
   status: actionStatusEnum("status").default("pending").notNull(),
   priority: incidentPriorityEnum("priority").default("medium").notNull(),
+  progress: integer('progress').default(0),
   
   // Assignment
   assigneeId: varchar("assignee_id").references(() => users.id).notNull(),
