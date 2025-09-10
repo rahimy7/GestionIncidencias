@@ -21,6 +21,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 
+
 interface RequestWithFile extends Express.Request {
   file?: Express.Multer.File;
   user?: any;
@@ -44,6 +45,28 @@ const multerStorage = multer.diskStorage({
     cb(null, `${timestamp}-${originalName}`);
   }
 });
+
+function processEvidenceFiles(files: any): string[] {
+  const processedFiles: string[] = [];
+  const fileList = Array.isArray(files) ? files : [files];
+  
+  for (const file of fileList) {
+    const relativePath = `/uploads/${file.filename}`;
+    processedFiles.push(relativePath);
+  }
+  
+  return processedFiles;
+}
+
+export async function ensureUploadsDirectory() {
+  try {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    await fs.mkdir(uploadDir, { recursive: true });
+    console.log('📁 Uploads directory ensured:', uploadDir);
+  } catch (error) {
+    console.error('❌ Error creating uploads directory:', error);
+  }
+}
 
 const upload = multer({
   storage: multerStorage,
@@ -1522,9 +1545,10 @@ app.post('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) =
 });
 
 // PATCH /api/action-plans/:id/tasks/:taskId - Actualizar tarea (marcar como completada)
+
 app.patch('/api/action-plans/:id/tasks/:taskId', 
   isAuthenticated,
-  upload.array('evidence', 5),
+  upload.array('evidence', 5), // Máximo 5 archivos de evidencia
   async (req: any, res) => {
     try {
       const { id, taskId } = req.params;
@@ -1536,17 +1560,18 @@ app.patch('/api/action-plans/:id/tasks/:taskId',
         return res.status(403).json({ error: 'No tienes permisos para actualizar esta tarea' });
       }
       
+      // Procesar archivos de evidencia subidos
       let evidenceFiles: string[] = [];
       if (req.files && req.files.length > 0) {
-        // Procesar archivos de evidencia
-        // evidenceFiles = await processEvidenceFiles(req.files);
+        evidenceFiles = req.files.map((file: any) => `/uploads/${file.filename}`);
+        console.log('Archivos de evidencia procesados:', evidenceFiles);
       }
       
       const updatedTask = await storage.updateActionPlanTask(taskId, {
         status,
         completedAt: status === 'completed' ? new Date() : null,
         completedBy: status === 'completed' ? userId : null,
-        evidence: evidenceFiles
+        evidence: evidenceFiles // Pasar los archivos procesados
       });
       
       await storage.updateActionPlanProgress(id);
@@ -1557,7 +1582,6 @@ app.patch('/api/action-plans/:id/tasks/:taskId',
     }
   }
 );
-
 // POST /api/action-plans/:id/comments - Agregar comentario a plan de acción
 app.post('/api/action-plans/:id/comments', 
   isAuthenticated,
@@ -1568,6 +1592,9 @@ app.post('/api/action-plans/:id/comments',
       const { content } = req.body;
       const userId = req.user.id;
       
+      console.log('💬 Adding comment to action plan:', id);
+      console.log('📁 Attachments received:', req.files?.length || 0);
+      
       const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
       if (!hasAccess) {
         return res.status(403).json({ error: 'Sin acceso al plan de acción' });
@@ -1577,10 +1604,16 @@ app.post('/api/action-plans/:id/comments',
         return res.status(400).json({ error: 'El contenido del comentario es requerido' });
       }
       
-      // Procesar archivos subidos
+      // Procesar archivos adjuntos
       let attachments: string[] = [];
       if (req.files && req.files.length > 0) {
-        attachments = req.files.map((file: any) => `/uploads/${file.filename}`);
+        try {
+          attachments = processEvidenceFiles(req.files); // Reutilizar la misma función
+          console.log('✅ Attachments processed:', attachments);
+        } catch (error) {
+          console.error('❌ Error processing attachments:', error);
+          return res.status(500).json({ error: 'Error procesando archivos adjuntos' });
+        }
       }
       
       const comment = await storage.addActionPlanComment({
@@ -1590,10 +1623,15 @@ app.post('/api/action-plans/:id/comments',
         attachments
       });
       
+      console.log('✅ Comment added successfully:', comment.id);
       res.status(201).json(comment);
+      
     } catch (error) {
-      console.error('Error adding comment:', error);
-      res.status(500).json({ error: 'Error al agregar comentario' });
+      console.error('❌ Error adding comment:', error);
+      res.status(500).json({ 
+        error: 'Error al agregar comentario',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 );
@@ -1696,35 +1734,6 @@ app.delete('/api/action-plans/:id/tasks/:taskId', isAuthenticated, async (req: a
 });
 
 // PATCH /api/action-plans/:id/tasks/:taskId/assign - Reasignar tarea
-app.patch('/api/action-plans/:id/tasks/:taskId/assign', isAuthenticated, async (req: any, res) => {
-  try {
-    const { id, taskId } = req.params;
-    const { assigneeId } = req.body;
-    const userId = req.user.id;
-    
-    // Solo el responsable puede reasignar tareas
-    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
-    if (!isResponsible) {
-      return res.status(403).json({ error: 'Solo el responsable puede reasignar tareas' });
-    }
-    
-    // Verificar que el nuevo asignado tiene acceso al plan
-    const hasAccess = await storage.userHasAccessToActionPlan(id, assigneeId);
-    if (!hasAccess) {
-      return res.status(400).json({ error: 'El usuario no tiene acceso a este plan' });
-    }
-    
-    const updatedTask = await storage.updateActionPlanTask(taskId, {
-      assigneeId,
-      status: 'pending' // Reset status when reassigning
-    });
-    
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error reassigning task:', error);
-    res.status(500).json({ error: 'Error al reasignar tarea' });
-  }
-});
 // Endpoint para estadísticas de tendencias
 app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   try {
@@ -1750,3 +1759,5 @@ app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   const httpServer = createServer(app);
   return httpServer;
 }
+
+

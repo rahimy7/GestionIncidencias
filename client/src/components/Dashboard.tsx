@@ -1,8 +1,9 @@
+
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileText, Clock, CheckCircle, TrendingUp } from "lucide-react";
 import { IncidentForm } from "./IncidentForm";
-import { IncidentList } from "./IncidentList";
+import IncidentList, { IncidentsList } from "./IncidentList";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useToast } from "@/hooks/use-toast";
 

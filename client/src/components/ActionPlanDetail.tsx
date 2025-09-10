@@ -159,14 +159,26 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose, userRole }: Ac
   });
 
   // Mutation para completar tarea
-// En ActionPlanDetail.tsx
 const completeTaskMutation = useMutation({
-  mutationFn: async ({ taskId }: { taskId: string }) => {
-    const response = await apiRequest(`/api/action-plans/${actionPlanId}/tasks/${taskId}`, {
+  mutationFn: async ({ taskId, files }: { taskId: string; files?: File[] }) => {
+    const formData = new FormData();
+    formData.append('status', 'completed');
+    
+    // Agregar archivos de evidencia si existen
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        formData.append('evidence', file);
+      });
+    }
+    
+    const response = await fetch(`/api/action-plans/${actionPlanId}/tasks/${taskId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'completed' }),
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+      body: formData,
     });
+    
     if (!response.ok) throw new Error('Error completing task');
     return response.json();
   },
@@ -176,7 +188,30 @@ const completeTaskMutation = useMutation({
 });
 
 const handleCompleteTask = (taskId: string) => {
-  completeTaskMutation.mutate({ taskId });
+  // Crear input file temporal para seleccionar evidencia
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = 'image/*,application/pdf,text/plain';
+  
+  input.onchange = (e) => {
+    const files = Array.from((e.target as HTMLInputElement).files || []);
+    
+    if (files.length > 0) {
+      // Si hay archivos, preguntar confirmación
+      if (confirm(`¿Deseas completar la tarea con ${files.length} archivo(s) de evidencia?`)) {
+        completeTaskMutation.mutate({ taskId, files });
+      }
+    } else {
+      // Si no hay archivos, completar sin evidencia
+      if (confirm('¿Deseas completar la tarea sin evidencia?')) {
+        completeTaskMutation.mutate({ taskId });
+      }
+    }
+  };
+  
+  // Mostrar diálogo de selección de archivos
+  input.click();
 };
 
   // Mutation para agregar comentario
@@ -513,16 +548,17 @@ return (
 
                       {/* Botones de acción */}
                       {task.status !== 'completed' && canCompleteTask(task) && (
-                        <Button
-                          onClick={() => handleCompleteTask(task.id)}
-                          size="sm"
-                          variant="outline"
-                          className="ml-2"
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          Completar
-                        </Button>
-                      )}
+  <Button
+    onClick={() => handleCompleteTask(task.id)}
+    size="sm"
+    variant="outline"
+    className="ml-2"
+    disabled={completeTaskMutation.isPending}
+  >
+    <CheckCircle2 className="h-4 w-4 mr-1" />
+    Completar
+  </Button>
+)}
                     </div>
                   </CardContent>
                 </Card>
