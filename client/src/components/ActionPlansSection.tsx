@@ -19,11 +19,15 @@ import {
   X,
   Users,
   AlertTriangle,
-  Clock
+  Clock,
+  Eye
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { ActionPlanDetail } from "./ActionPlanDetail";
+import { ActionPlanCard } from "./ActionPlanCard";
+import { ParticipantSelector } from "./ParticipantSelector";
 
 interface ActionPlan {
   id: string;
@@ -388,6 +392,8 @@ const getPriorityText = (priority: string) => {
 
 export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionProps) {
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
+  const [selectedActionPlanId, setSelectedActionPlanId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [newPlan, setNewPlan] = useState({
     title: '',
     description: '',
@@ -399,6 +405,25 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
   });
   
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/auth/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const user = await response.json();
+      setCurrentUser(user);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    }
+  };
 
   const updatePlanStatus = async (planId: string, status: string) => {
     try {
@@ -487,269 +512,214 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
   const progressPercentage = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="h-5 w-5" />
-            Planes de Acción
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {completedPlans}/{totalPlans} completados ({progressPercentage}%)
-            </span>
-            <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-green-500 transition-all duration-300"
-                style={{ width: `${progressPercentage}%` }}
-              />
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5" />
+              Planes de Acción
             </div>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {incident.actionPlans?.map((plan) => {
-            const isOverdue = plan.status !== 'completed' && new Date(plan.dueDate) < new Date();
-            const actualStatus = isOverdue ? 'overdue' : plan.status;
-            
-            return (
-              <div key={plan.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium text-lg">{plan.title}</h4>
-                      {isOverdue && <AlertTriangle className="h-4 w-4 text-red-500" />}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {plan.description}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Badge className={getStatusColor(actualStatus)}>
-                      {getStatusText(actualStatus)}
-                    </Badge>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                  <div className="flex items-center gap-1">
-                    <User className="h-4 w-4" />
-                    <span>{plan.assignee?.firstName ? `${plan.assignee.firstName} ${plan.assignee.lastName}` : plan.assignee?.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    <span>
-                      Vence: {format(new Date(plan.dueDate), 'dd/MM/yyyy', { locale: es })}
-                    </span>
-                  </div>
-                  {plan.participants && plan.participants.length > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span>{plan.participants.length} participantes</span>
-                    </div>
-                  )}
-                  {plan.completedAt && (
-                    <div className="flex items-center gap-1 text-green-600">
-                      <span>
-                        Completado: {format(new Date(plan.completedAt), 'dd/MM/yyyy', { locale: es })}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Mostrar participantes del plan */}
-                {plan.participants && plan.participants.length > 0 && (
-                  <div className="mb-3">
-                    <h5 className="text-sm font-medium mb-2">Participantes:</h5>
-                    <div className="flex flex-wrap gap-2">
-                      {plan.participants.map((participant) => (
-                        <div key={participant.id} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs">
-                          <Avatar className="h-4 w-4">
-                            <AvatarFallback className="text-xs">
-                              {participant.user.firstName.charAt(0)}{participant.user.lastName.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{participant.user.firstName} {participant.user.lastName}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {participant.role}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex gap-2">
-                  {plan.status === 'pending' && (
-                    <Button 
-                      size="sm" 
-                      onClick={() => updatePlanStatus(plan.id, 'in_progress')}
-                    >
-                      Iniciar
-                    </Button>
-                  )}
-                  {(plan.status === 'in_progress' || actualStatus === 'overdue') && (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => updatePlanStatus(plan.id, 'completed')}
-                    >
-                      Completar
-                    </Button>
-                  )}
-                  {plan.status === 'completed' && (
-                    <Badge variant="secondary" className="text-green-600">
-                      ✓ Completado
-                    </Badge>
-                  )}
-                </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {completedPlans}/{totalPlans} completados ({progressPercentage}%)
+              </span>
+              <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 transition-all duration-300"
+                  style={{ width: `${progressPercentage}%` }}
+                />
               </div>
-            );
-          })}
-          
-          {(!incident.actionPlans || incident.actionPlans.length === 0) && (
-            <div className="text-center py-8 text-muted-foreground">
-              <ClipboardList className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No hay planes de acción definidos</p>
-              <p className="text-sm">Los planes aparecerán aquí cuando se agreguen</p>
             </div>
-          )}
-          
-          <Dialog open={showNewPlanForm} onOpenChange={setShowNewPlanForm}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="w-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Agregar Plan de Acción
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Nuevo Plan de Acción</DialogTitle>
-              </DialogHeader>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Información básica */}
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="title">Título</Label>
-                    <Input
-                      id="title"
-                      value={newPlan.title}
-                      onChange={(e) => setNewPlan({...newPlan, title: e.target.value})}
-                      placeholder="Título del plan"
-                      className="mt-1"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="description">Descripción</Label>
-                    <Textarea
-                      id="description"
-                      value={newPlan.description}
-                      onChange={(e) => setNewPlan({...newPlan, description: e.target.value})}
-                      placeholder="Descripción detallada"
-                      rows={3}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {incident.actionPlans?.map((plan) => {
+              const isOverdue = plan.status !== 'completed' && new Date(plan.dueDate) < new Date();
+              const actualStatus = isOverdue ? 'overdue' : plan.status;
+              
+              return (
+                <ActionPlanCard
+                  key={plan.id}
+                  actionPlan={{
+                    ...plan,
+                    incident: {
+                      incidentNumber: `INC-${incident.id}`,
+                      title: `Plan de acción para incidencia`,
+                      center: {
+                        name: 'Centro de la incidencia',
+                        code: 'CTR'
+                      },
+                      type: {
+                        name: 'Acción correctiva'
+                      }
+                    },
+                    userRole: currentUser?.id === plan.assigneeId ? 'responsible' : 'participant',
+                    _count: {
+                      tasks: 0,
+                      completedTasks: 0,
+                      comments: 0
+                    }
+                  }}
+                />
+              );
+            })}
+            
+            {(!incident.actionPlans || incident.actionPlans.length === 0) && (
+              <div className="text-center py-8 text-muted-foreground">
+                <ClipboardList className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No hay planes de acción definidos</p>
+                <p className="text-sm">Los planes aparecerán aquí cuando se agreguen</p>
+              </div>
+            )}
+            
+            <Dialog open={showNewPlanForm} onOpenChange={setShowNewPlanForm}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Plan de Acción
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Nuevo Plan de Acción</DialogTitle>
+                </DialogHeader>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Información básica */}
+                  <div className="space-y-4">
                     <div>
-                      <Label htmlFor="startDate">Fecha de inicio</Label>
+                      <Label htmlFor="title">Título</Label>
                       <Input
-                        id="startDate"
-                        type="date"
-                        value={newPlan.startDate}
-                        onChange={(e) => setNewPlan({...newPlan, startDate: e.target.value})}
+                        id="title"
+                        value={newPlan.title}
+                        onChange={(e) => setNewPlan({...newPlan, title: e.target.value})}
+                        placeholder="Título del plan"
                         className="mt-1"
                       />
                     </div>
                     
                     <div>
-                      <Label htmlFor="dueDate">Fecha límite</Label>
-                      <Input
-                        id="dueDate"
-                        type="date"
-                        value={newPlan.dueDate}
-                        onChange={(e) => setNewPlan({...newPlan, dueDate: e.target.value})}
+                      <Label htmlFor="description">Descripción</Label>
+                      <Textarea
+                        id="description"
+                        value={newPlan.description}
+                        onChange={(e) => setNewPlan({...newPlan, description: e.target.value})}
+                        placeholder="Descripción detallada"
+                        rows={3}
                         className="mt-1"
                       />
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="startDate">Fecha de inicio</Label>
+                        <Input
+                          id="startDate"
+                          type="date"
+                          value={newPlan.startDate}
+                          onChange={(e) => setNewPlan({...newPlan, startDate: e.target.value})}
+                          className="mt-1"
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="dueDate">Fecha límite</Label>
+                        <Input
+                          id="dueDate"
+                          type="date"
+                          value={newPlan.dueDate}
+                          onChange={(e) => setNewPlan({...newPlan, dueDate: e.target.value})}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="priority">Prioridad</Label>
+                      <Select value={newPlan.priority} onValueChange={(value) => setNewPlan({...newPlan, priority: value})}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              Baja
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="medium">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                              Media
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="high">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                              Alta
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="critical">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                              Crítica
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div>
-                    <Label htmlFor="priority">Prioridad</Label>
-                    <Select value={newPlan.priority} onValueChange={(value) => setNewPlan({...newPlan, priority: value})}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                            Baja
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="medium">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                            Media
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="high">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                            Alta
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="critical">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                            Crítica
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {/* Asignación de personas */}
+                  <div className="space-y-4">
+                    <ParticipantSelector
+                      participants={incident.participants || []}
+                      selectedUserId={newPlan.assigneeId}
+                      onSelectUser={(userId) => setNewPlan({...newPlan, assigneeId: userId})}
+                      label="Responsable del plan"
+                      placeholder="Seleccionar responsable"
+                    />
+
+                    <PlanParticipantsManager
+                      selectedParticipants={newPlan.participants}
+                      onParticipantsChange={(participants) => setNewPlan({...newPlan, participants})}
+                      availableParticipants={incident.participants || []}
+                    />
                   </div>
                 </div>
-
-                {/* Asignación de personas */}
-                <div className="space-y-4">
-                  <AssigneeSelector
-                    participants={incident.participants || []}
-                    selectedUserId={newPlan.assigneeId}
-                    onSelectUser={(userId) => setNewPlan({...newPlan, assigneeId: userId})}
-                    label="Responsable del plan"
-                  />
-
-                  <PlanParticipantsManager
-                    selectedParticipants={newPlan.participants}
-                    onParticipantsChange={(participants) => setNewPlan({...newPlan, participants})}
-                    availableParticipants={incident.participants || []}
-                  />
+                
+                <div className="flex gap-2 pt-6 border-t">
+                  <Button 
+                    onClick={createActionPlan} 
+                    className="flex-1"
+                    disabled={!newPlan.title.trim() || !newPlan.assigneeId || !newPlan.dueDate}
+                  >
+                    Crear Plan
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowNewPlanForm(false)}
+                    className="flex-1"
+                  >
+                    Cancelar
+                  </Button>
                 </div>
-              </div>
-              
-              <div className="flex gap-2 pt-6 border-t">
-                <Button 
-                  onClick={createActionPlan} 
-                  className="flex-1"
-                  disabled={!newPlan.title.trim() || !newPlan.assigneeId || !newPlan.dueDate}
-                >
-                  Crear Plan
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowNewPlanForm(false)}
-                  className="flex-1"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardContent>
-    </Card>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modal de ActionPlanDetail */}
+      {selectedActionPlanId && (
+        <ActionPlanDetail
+          actionPlanId={selectedActionPlanId}
+          isOpen={!!selectedActionPlanId}
+          onClose={() => setSelectedActionPlanId(null)}
+          userRole={currentUser?.id ? 'responsible' : 'participant'}
+        />
+      )}
+    </>
   );
 }
