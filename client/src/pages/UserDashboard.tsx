@@ -1,5 +1,6 @@
-// client/src/pages/UserDashboard.tsx - Versión actualizada
+// client/src/pages/UserDashboard.tsx - Versión corregida
 
+import React from 'react';
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { FileText, Clock, CheckCircle2, AlertCircle, Plus, Users, ClipboardCheck } from "lucide-react";
+import { 
+  FileText, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  Plus, 
+  Users, 
+  ClipboardCheck,
+  AlertTriangle,
+  TrendingUp,
+  Calendar
+} from "lucide-react";
 import { Link } from "wouter";
 import { IncidentCard } from "@/components/IncidentCard";
 import { ActionPlanCard } from "@/components/ActionPlanCard";
@@ -48,7 +60,7 @@ export function UserDashboard() {
     retry: false,
   });
 
-  // NUEVO: Obtener planes de acción asignados al usuario
+  // Obtener planes de acción asignados al usuario
   const { data: myActionPlans, isLoading: loadingActionPlans } = useQuery({
     queryKey: ['/api/action-plans/assigned'],
     queryFn: async () => {
@@ -121,265 +133,304 @@ export function UserDashboard() {
     completed: myActionPlans?.filter((p: any) => p.status === 'completed').length || 0,
     overdue: myActionPlans?.filter((p: any) => 
       p.status !== 'completed' && new Date(p.dueDate) < new Date()
-    ).length || 0
+    ).length || 0,
+    asResponsible: myActionPlans?.filter((p: any) => p.userRole === 'assignee').length || 0,
+    asParticipant: myActionPlans?.filter((p: any) => p.userRole === 'participant').length || 0,
   };
 
-  if (loadingReported || loadingAssigned || loadingActionPlans) {
-    return (
-      <Layout>
-        <div className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-48 bg-gray-200 rounded"></div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
+  if (!user) {
+    return <div>Cargando...</div>;
   }
 
   return (
     <Layout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-page-title">
-              Mi Dashboard
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Gestiona tus incidencias y planes de acción
-            </p>
-          </div>
-          <Link href="/incidents/new">
-            <Button className="flex items-center gap-2" data-testid="button-new-incident">
-              <Plus className="h-4 w-4" />
-              Nueva Incidencia
-            </Button>
-          </Link>
+        <div>
+          <h1 className="text-3xl font-bold">Mi Dashboard</h1>
+          <p className="text-muted-foreground">
+            Bienvenido, {user.firstName} {user.lastName}
+          </p>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          {/* Estadísticas de Incidencias */}
+        {/* Estadísticas principales */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Incidencias</p>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <FileText className="h-8 w-8 text-blue-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Incidencias</p>
                   <p className="text-2xl font-bold">{uniqueIncidents.length}</p>
                 </div>
-                <FileText className="h-8 w-8 text-blue-500" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">En Progreso</p>
-                  <p className="text-2xl font-bold">
-                    {uniqueIncidents.filter(i => i.status === 'in_progress').length}
-                  </p>
-                </div>
-                <Clock className="h-8 w-8 text-yellow-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Completadas</p>
-                  <p className="text-2xl font-bold">
-                    {uniqueIncidents.filter(i => i.status === 'completed').length}
-                  </p>
-                </div>
-                <CheckCircle2 className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Estadísticas de Planes de Acción */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Planes Asignados</p>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <ClipboardCheck className="h-8 w-8 text-purple-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Planes de Acción</p>
                   <p className="text-2xl font-bold">{actionPlansStats.total}</p>
                 </div>
-                <ClipboardCheck className="h-8 w-8 text-purple-500" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Planes Pendientes</p>
-                  <p className="text-2xl font-bold">{actionPlansStats.pending + actionPlansStats.inProgress}</p>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <Clock className="h-8 w-8 text-yellow-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
+                  <p className="text-2xl font-bold">{actionPlansStats.inProgress}</p>
                 </div>
-                <AlertCircle className="h-8 w-8 text-orange-500" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Vencidos</p>
-                  <p className="text-2xl font-bold text-red-600">{actionPlansStats.overdue}</p>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <AlertTriangle className={`h-8 w-8 ${actionPlansStats.overdue > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Vencidos</p>
+                  <p className="text-2xl font-bold">{actionPlansStats.overdue}</p>
                 </div>
-                <AlertCircle className="h-8 w-8 text-red-500" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Tabs para Incidencias y Planes de Acción */}
-        <Tabs defaultValue="incidents" className="space-y-4">
+        {/* Contenido principal con tabs */}
+        <Tabs defaultValue="action-plans" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="incidents" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Incidencias ({uniqueIncidents.length})
+            <TabsTrigger value="action-plans" className="relative">
+              Planes de Acción
+              {actionPlansStats.total > 0 && (
+                <Badge className="ml-2 px-1.5 py-0.5 text-xs">
+                  {actionPlansStats.total}
+                </Badge>
+              )}
             </TabsTrigger>
-            <TabsTrigger value="action-plans" className="flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              Planes de Acción ({actionPlansStats.total})
-              {actionPlansStats.overdue > 0 && (
-                <Badge variant="destructive" className="ml-1 text-xs">
-                  {actionPlansStats.overdue}
+            <TabsTrigger value="incidents" className="relative">
+              Incidencias
+              {uniqueIncidents.length > 0 && (
+                <Badge className="ml-2 px-1.5 py-0.5 text-xs">
+                  {uniqueIncidents.length}
                 </Badge>
               )}
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="incidents" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Mis Incidencias</h2>
-              <div className="text-sm text-muted-foreground">
-                {uniqueIncidents.length} incidencia{uniqueIncidents.length !== 1 ? 's' : ''}
-              </div>
-            </div>
+          {/* Tab de Planes de Acción */}
+          <TabsContent value="action-plans" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5" />
+                    Mis Planes de Acción
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingActionPlans ? (
+                  <div className="flex justify-center items-center h-40">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : actionPlansStats.total === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                        No tienes planes de acción asignados
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Aquí aparecerán los planes de acción donde seas responsable o participante.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Filtros rápidos */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <Badge variant={actionPlansStats.overdue > 0 ? "destructive" : "secondary"}>
+                        Vencidos: {actionPlansStats.overdue}
+                      </Badge>
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-200">
+                        Pendientes: {actionPlansStats.pending}
+                      </Badge>
+                      <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
+                        En Progreso: {actionPlansStats.inProgress}
+                      </Badge>
+                      <Badge variant="outline" className="bg-green-50 text-green-800 border-green-200">
+                        Completados: {actionPlansStats.completed}
+                      </Badge>
+                    </div>
 
-            {uniqueIncidents.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                    No tienes incidencias
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Aquí aparecerán las incidencias que reportes o que te sean asignadas.
-                  </p>
-                  <Link href="/incidents/new">
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Reportar Incidencia
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {uniqueIncidents.map((incident) => (
-                  <IncidentCard key={incident.id} incident={incident} />
-                ))}
+                    {/* Lista de planes de acción */}
+                    <div className="grid gap-4">
+                      {myActionPlans
+                        ?.sort((a: any, b: any) => {
+                          // Priorizar planes vencidos y en progreso
+                          const aOverdue = a.status !== 'completed' && new Date(a.dueDate) < new Date();
+                          const bOverdue = b.status !== 'completed' && new Date(b.dueDate) < new Date();
+                          
+                          if (aOverdue && !bOverdue) return -1;
+                          if (!aOverdue && bOverdue) return 1;
+                          
+                          // Luego por estado (en progreso primero)
+                          const statusOrder = { 'in_progress': 0, 'pending': 1, 'completed': 2, 'cancelled': 3 };
+                          const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4;
+                          const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4;
+                          
+                          if (aOrder !== bOrder) return aOrder - bOrder;
+                          
+                          // Finalmente por fecha de vencimiento
+                          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+                        })
+                        .map((actionPlan: any) => (
+                          <ActionPlanCard key={actionPlan.id} actionPlan={actionPlan} />
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Resumen de roles */}
+            {actionPlansStats.total > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Users className="h-6 w-6 text-purple-600 mr-3" />
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Como Responsable</p>
+                          <p className="text-xl font-bold">{actionPlansStats.asResponsible}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                        Responsable
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <TrendingUp className="h-6 w-6 text-blue-600 mr-3" />
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Como Participante</p>
+                          <p className="text-xl font-bold">{actionPlansStats.asParticipant}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        Participante
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="action-plans" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Mis Planes de Acción</h2>
-              <div className="text-sm text-muted-foreground">
-                {actionPlansStats.total} plan{actionPlansStats.total !== 1 ? 'es' : ''}
-                {actionPlansStats.overdue > 0 && (
-                  <span className="text-red-600 ml-2">
-                    • {actionPlansStats.overdue} vencido{actionPlansStats.overdue !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Filtros rápidos para planes de acción */}
-            <div className="flex gap-2 flex-wrap">
-              <Badge variant="outline" className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                Pendientes: {actionPlansStats.pending}
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                En Progreso: {actionPlansStats.inProgress}
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                Completados: {actionPlansStats.completed}
-              </Badge>
-              {actionPlansStats.overdue > 0 && (
-                <Badge variant="destructive" className="flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  Vencidos: {actionPlansStats.overdue}
-                </Badge>
-              )}
-            </div>
-
-            {!myActionPlans || myActionPlans.length === 0 ? (
+          {/* Tab de Incidencias */}
+          <TabsContent value="incidents" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Incidencias reportadas */}
               <Card>
-                <CardContent className="p-8 text-center">
-                  <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                    No tienes planes de acción asignados
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Aquí aparecerán los planes de acción donde seas responsable o participante.
-                  </p>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Incidencias Reportadas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingReported ? (
+                    <div className="flex justify-center items-center h-32">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  ) : myReportedIncidents?.length === 0 ? (
+                    <div className="text-center py-8">
+                      <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No has reportado incidencias</p>
+                      <Link href="/incidents/new">
+                        <Button className="mt-4" size="sm">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Reportar Incidencia
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {myReportedIncidents?.slice(0, 3).map((incident: any) => (
+                        <IncidentCard key={incident.id} incident={incident} showActions={false} />
+                      ))}
+                      {myReportedIncidents?.length > 3 && (
+                        <Link href="/incidents">
+                          <Button variant="outline" size="sm" className="w-full">
+                            Ver todas las incidencias reportadas
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            ) : (
-              <div className="grid gap-4">
-                {myActionPlans
-                  .sort((a: any, b: any) => {
-                    // Priorizar planes vencidos y en progreso
-                    const aOverdue = a.status !== 'completed' && new Date(a.dueDate) < new Date();
-                    const bOverdue = b.status !== 'completed' && new Date(b.dueDate) < new Date();
-                    
-                    if (aOverdue && !bOverdue) return -1;
-                    if (!aOverdue && bOverdue) return 1;
-                    
-                    // Luego por estado (en progreso primero)
-                    const statusOrder = { 'in_progress': 0, 'pending': 1, 'completed': 2, 'cancelled': 3 };
-                    const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4;
-                    const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4;
-                    
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    
-                    // Finalmente por fecha de vencimiento
-                    return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-                  })
-                  .map((actionPlan: any) => (
-                    <ActionPlanCard key={actionPlan.id} actionPlan={actionPlan} />
-                  ))}
-              </div>
-            )}
+
+              {/* Incidencias asignadas */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Incidencias Asignadas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingAssigned ? (
+                    <div className="flex justify-center items-center h-32">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  ) : myAssignedIncidents?.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No tienes incidencias asignadas</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {myAssignedIncidents?.slice(0, 3).map((incident: any) => (
+                        <IncidentCard key={incident.id} incident={incident} showActions={true} />
+                      ))}
+                      {myAssignedIncidents?.length > 3 && (
+                        <Link href="/incidents">
+                          <Button variant="outline" size="sm" className="w-full">
+                            Ver todas las incidencias asignadas
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
 
-        {/* Resumen rápido al final */}
+        {/* Resumen general */}
         {(uniqueIncidents.length > 0 || actionPlansStats.total > 0) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Resumen de Actividad</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-2">Incidencias</h4>
                   <div className="space-y-1 text-sm">
@@ -395,6 +446,7 @@ export function UserDashboard() {
                     </div>
                   </div>
                 </div>
+
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-2">Planes de Acción</h4>
                   <div className="space-y-1 text-sm">
@@ -403,15 +455,37 @@ export function UserDashboard() {
                       <span className="font-medium">{actionPlansStats.total}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Pendientes:</span>
-                      <span className="font-medium">
-                        {actionPlansStats.pending + actionPlansStats.inProgress}
-                      </span>
+                      <span>Completados:</span>
+                      <span className="font-medium">{actionPlansStats.completed}</span>
                     </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-2">Atención Requerida</h4>
+                  <div className="space-y-1 text-sm">
                     {actionPlansStats.overdue > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>Vencidos:</span>
-                        <span className="font-medium">{actionPlansStats.overdue}</span>
+                      <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <span className="text-red-800">
+                          {actionPlansStats.overdue} plan{actionPlansStats.overdue !== 1 ? 'es' : ''} vencido{actionPlansStats.overdue !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    )}
+                    {actionPlansStats.inProgress > 0 && (
+                      <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                        <Clock className="h-4 w-4 text-blue-600" />
+                        <span className="text-blue-800">
+                          {actionPlansStats.inProgress} plan{actionPlansStats.inProgress !== 1 ? 'es' : ''} en progreso
+                        </span>
+                      </div>
+                    )}
+                    {actionPlansStats.overdue === 0 && actionPlansStats.inProgress === 0 && actionPlansStats.pending === 0 && actionPlansStats.total > 0 && (
+                      <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-green-800">
+                          Todos los planes están completados
+                        </span>
                       </div>
                     )}
                   </div>

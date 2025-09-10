@@ -1444,34 +1444,269 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
   }
 });
 // GET /api/action-plans/:id - Obtener detalle de un plan de acción específico
+
+// server/routes.ts - Agregar estas rutas después de las existentes
+
+// ===== RUTAS MEJORADAS DE PLANES DE ACCIÓN =====
+
+// GET /api/action-plans/:id - Obtener detalles completos de un plan de acción
 app.get('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
   try {
-    const planId = req.params.id;
+    const { id } = req.params;
     const userId = req.user.id;
     
-    const actionPlan = await storage.getActionPlanById(planId);
-    if (!actionPlan) {
-      return res.status(404).json({ error: 'Plan de acción no encontrado' });
-    }
-
-    // Verificar que el usuario tiene acceso a este plan
-    const hasAccess = actionPlan.assigneeId === userId || 
-      (actionPlan.participants && actionPlan.participants.some((p: any) => p.userId === userId));
+    // Verificar que el usuario tiene acceso al plan (es responsable o participante)
+    const actionPlan = await storage.getActionPlanWithDetails(id, userId);
     
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'No tienes acceso a este plan de acción' });
+    if (!actionPlan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado o sin acceso' });
     }
-
+    
     res.json(actionPlan);
   } catch (error) {
     console.error('Error fetching action plan details:', error);
     res.status(500).json({ 
       error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : "Unknown error"
     });
   }
 });
 
+// POST /api/action-plans/:id/tasks - Agregar tarea a plan de acción
+app.post('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, dueDate, assigneeId } = req.body;
+    const userId = req.user.id;
+    
+    // Verificar que el usuario es responsable del plan
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ error: 'Solo el responsable puede agregar tareas' });
+    }
+    
+    if (!title || !dueDate) {
+      return res.status(400).json({ error: 'Título y fecha límite son requeridos' });
+    }
+    
+    const task = await storage.addActionPlanTask({
+      actionPlanId: id,
+      title,
+      description: description || '',
+      dueDate: new Date(dueDate),
+      assigneeId: assigneeId || userId,
+      createdBy: userId
+    });
+    
+    res.status(201).json(task);
+  } catch (error) {
+    console.error('Error adding task to action plan:', error);
+    res.status(500).json({ error: 'Error al agregar tarea' });
+  }
+});
+
+// PATCH /api/action-plans/:id/tasks/:taskId - Actualizar tarea (marcar como completada)
+app.patch('/api/action-plans/:id/tasks/:taskId', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id, taskId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.id;
+    
+    // Verificar que el usuario puede completar la tarea (responsable del plan o asignado a la tarea)
+    const canComplete = await storage.canUserCompleteTask(taskId, userId);
+    if (!canComplete) {
+      return res.status(403).json({ error: 'No tienes permisos para actualizar esta tarea' });
+    }
+    
+    // Manejar archivos de evidencia si se envían
+    let evidenceFiles: string[] = [];
+    if (req.files && req.files.evidence) {
+      // Aquí procesarías la subida de archivos
+      // evidenceFiles = await processEvidenceFiles(req.files.evidence);
+    }
+    
+    const updatedTask = await storage.updateActionPlanTask(taskId, {
+      status,
+      completedAt: status === 'completed' ? new Date() : null,
+      completedBy: status === 'completed' ? userId : null,
+      evidence: evidenceFiles
+    });
+    
+    // Si todas las tareas están completadas, actualizar progreso del plan
+    await storage.updateActionPlanProgress(id);
+    
+    res.json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: 'Error al actualizar tarea' });
+  }
+});
+
+// POST /api/action-plans/:id/comments - Agregar comentario a plan de acción
+app.post('/api/action-plans/:id/comments', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+    
+    // Verificar que el usuario tiene acceso al plan
+    const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso al plan de acción' });
+    }
+    
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'El contenido del comentario es requerido' });
+    }
+    
+    // Manejar archivos adjuntos si se envían
+    let attachments: string[] = [];
+    if (req.files && req.files.attachments) {
+      // attachments = await processAttachmentFiles(req.files.attachments);
+    }
+    
+    const comment = await storage.addActionPlanComment({
+      actionPlanId: id,
+      content: content.trim(),
+      authorId: userId,
+      attachments
+    });
+    
+    res.status(201).json(comment);
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    res.status(500).json({ error: 'Error al agregar comentario' });
+  }
+});
+
+// PATCH /api/action-plans/:id - Actualizar estado del plan de acción
+app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user.id;
+    
+    // Solo el responsable puede marcar el plan como completado
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ error: 'Solo el responsable puede completar el plan' });
+    }
+    
+    // Verificar que todas las tareas estén completadas antes de completar el plan
+    if (status === 'completed') {
+      const allTasksCompleted = await storage.areAllTasksCompleted(id);
+      if (!allTasksCompleted) {
+        return res.status(400).json({ error: 'Todas las tareas deben estar completadas' });
+      }
+    }
+    
+    const updatedPlan = await storage.updateActionPlan(id, {
+      status,
+      completedAt: status === 'completed' ? new Date() : null,
+      completedBy: status === 'completed' ? userId : null
+    });
+    
+    res.json(updatedPlan);
+  } catch (error) {
+    console.error('Error updating action plan:', error);
+    res.status(500).json({ error: 'Error al actualizar plan de acción' });
+  }
+});
+
+// GET /api/action-plans/:id/tasks - Obtener tareas de un plan específico
+app.get('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    // Verificar acceso
+    const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso al plan de acción' });
+    }
+    
+    const tasks = await storage.getActionPlanTasks(id);
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching action plan tasks:', error);
+    res.status(500).json({ error: 'Error al obtener tareas' });
+  }
+});
+
+// GET /api/action-plans/:id/comments - Obtener comentarios de un plan específico
+app.get('/api/action-plans/:id/comments', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    // Verificar acceso
+    const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso al plan de acción' });
+    }
+    
+    const comments = await storage.getActionPlanComments(id);
+    res.json(comments);
+  } catch (error) {
+    console.error('Error fetching action plan comments:', error);
+    res.status(500).json({ error: 'Error al obtener comentarios' });
+  }
+});
+
+// DELETE /api/action-plans/:id/tasks/:taskId - Eliminar tarea (solo responsable)
+app.delete('/api/action-plans/:id/tasks/:taskId', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id, taskId } = req.params;
+    const userId = req.user.id;
+    
+    // Solo el responsable puede eliminar tareas
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ error: 'Solo el responsable puede eliminar tareas' });
+    }
+    
+    await storage.deleteActionPlanTask(taskId);
+    
+    // Actualizar progreso del plan
+    await storage.updateActionPlanProgress(id);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ error: 'Error al eliminar tarea' });
+  }
+});
+
+// PATCH /api/action-plans/:id/tasks/:taskId/assign - Reasignar tarea
+app.patch('/api/action-plans/:id/tasks/:taskId/assign', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id, taskId } = req.params;
+    const { assigneeId } = req.body;
+    const userId = req.user.id;
+    
+    // Solo el responsable puede reasignar tareas
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ error: 'Solo el responsable puede reasignar tareas' });
+    }
+    
+    // Verificar que el nuevo asignado tiene acceso al plan
+    const hasAccess = await storage.userHasAccessToActionPlan(id, assigneeId);
+    if (!hasAccess) {
+      return res.status(400).json({ error: 'El usuario no tiene acceso a este plan' });
+    }
+    
+    const updatedTask = await storage.updateActionPlanTask(taskId, {
+      assigneeId,
+      status: 'pending' // Reset status when reassigning
+    });
+    
+    res.json(updatedTask);
+  } catch (error) {
+    console.error('Error reassigning task:', error);
+    res.status(500).json({ error: 'Error al reasignar tarea' });
+  }
+});
 // Endpoint para estadísticas de tendencias
 app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   try {

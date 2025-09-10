@@ -32,6 +32,10 @@ import {
   ActionPlanParticipant,
   InsertActionPlanParticipant,
   actionPlanParticipants,
+  actionPlanComments,
+  actionPlanTasks,
+  commentAttachments,
+  taskEvidence,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
@@ -331,25 +335,6 @@ export class DatabaseStorage implements IStorage {
     return newActionPlan;
   }
 
-  async updateActionPlan(id: string, updates: Partial<InsertActionPlan>): Promise<ActionPlan> {
-    const updateData: any = { ...updates, updatedAt: new Date() };
-    
-    // Convertir fechas si están presentes
-    if (updates.startDate) {
-      updateData.startDate = new Date(updates.startDate);
-    }
-    if (updates.dueDate) {
-      updateData.dueDate = new Date(updates.dueDate);
-    }
-
-    const [updatedActionPlan] = await db
-      .update(actionPlans)
-      .set(updateData)
-      .where(eq(actionPlans.id, id))
-      .returning();
-
-    return updatedActionPlan;
-  }
 
   // Action Plan Participants operations - NUEVO
   async addActionPlanParticipant(participant: InsertActionPlanParticipant): Promise<ActionPlanParticipant> {
@@ -1550,70 +1535,6 @@ async getCenter(centerId: string): Promise<Center | null> {
 
 // Agregar estos métodos a la clase Storage
 
-async getActionPlansByUser(userId: string) {
-  try {
-    // Obtener planes donde el usuario es responsable
-    const assignedPlans = await db
-      .select()
-      .from(actionPlans)
-      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
-      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
-      .where(eq(actionPlans.assigneeId, userId))
-      .orderBy(desc(actionPlans.createdAt));
-
-    // Obtener planes donde el usuario es participante
-    const participantPlans = await db
-      .select()
-      .from(actionPlans)
-      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
-      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
-      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
-      .where(eq(actionPlanParticipants.userId, userId))
-      .orderBy(desc(actionPlans.createdAt));
-
-    // Combinar y eliminar duplicados
-    const allPlans = [...assignedPlans, ...participantPlans];
-    const uniquePlans = allPlans.filter((plan, index, self) => 
-      index === self.findIndex(p => p.action_plans.id === plan.action_plans.id)
-    );
-
-    // Procesar cada plan para incluir participantes
-    const plansWithDetails = [];
-    for (const planRow of uniquePlans) {
-      // Obtener participantes del plan
-      const planParticipants = await db
-        .select()
-        .from(actionPlanParticipants)
-        .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
-        .where(eq(actionPlanParticipants.actionPlanId, planRow.action_plans.id));
-
-      plansWithDetails.push({
-        ...planRow.action_plans,
-        assignee: planRow.users,
-        incident: {
-          ...planRow.incidents,
-          center: planRow.centers,
-          type: planRow.incident_types
-        },
-        participants: planParticipants.map(p => ({
-          ...p.action_plan_participants,
-          user: p.users
-        })),
-        // Indicar el rol del usuario en este plan
-        userRole: planRow.action_plans.assigneeId === userId ? 'assignee' : 'participant'
-      });
-    }
-
-    return plansWithDetails;
-  } catch (error) {
-    console.error('Error fetching action plans by user:', error);
-    throw error;
-  }
-}
 
 async getActionPlanById(planId: string) {
   try {
@@ -1685,7 +1606,557 @@ async updateActionPlanStatus(planId: string, updateData: {
   }
 }
 
+// Obtener detalles completos de un plan de acción
+async getActionPlanWithDetails(actionPlanId: string, userId: string) {
+  try {
+    // Verificar acceso del usuario
+    const access = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
+      .where(
+        and(
+          eq(actionPlans.id, actionPlanId),
+          or(
+            eq(actionPlans.assigneeId, userId),
+            eq(actionPlanParticipants.userId, userId)
+          )
+        )
+      )
+      .limit(1);
 
+    if (access.length === 0) {
+      return null; // Usuario no tiene acceso
+    }
+
+    // Obtener plan completo con relaciones
+    const planData = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(actionPlans.id, actionPlanId))
+      .limit(1);
+
+    if (planData.length === 0) {
+      return null;
+    }
+
+    const plan = planData[0];
+
+    // Obtener participantes
+    const participants = await db
+      .select()
+      .from(actionPlanParticipants)
+      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+      .where(eq(actionPlanParticipants.actionPlanId, actionPlanId));
+
+    // Obtener tareas
+    const tasks = await this.getActionPlanTasks(actionPlanId);
+
+    // Obtener comentarios
+    const comments = await this.getActionPlanComments(actionPlanId);
+
+    // Calcular progreso
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const progress = tasks.length > 0 ? (completedTasks / tasks.length) * 100 : 0;
+
+    // Determinar rol del usuario
+    const userRole = plan.action_plans.assigneeId === userId ? 'responsible' : 'participant';
+
+    return {
+      id: plan.action_plans.id,
+      title: plan.action_plans.title,
+      description: plan.action_plans.description,
+      status: plan.action_plans.status,
+      dueDate: plan.action_plans.dueDate,
+      createdAt: plan.action_plans.createdAt,
+      responsible: {
+        id: plan.users.id,
+        name: `${plan.users.firstName} ${plan.users.lastName}`,
+        email: plan.users.email,
+      },
+      participants: participants.map(p => ({
+        id: p.users.id,
+        name: `${p.users.firstName} ${p.users.lastName}`,
+        email: p.users.email,
+        role: p.action_plan_participants.role,
+      })),
+      tasks,
+      comments,
+      incident: {
+        id: plan.incidents.id,
+        title: plan.incidents.title,
+        center: plan.centers.name,
+      },
+      progress: Math.round(progress),
+      userRole,
+    };
+  } catch (error) {
+    console.error('Error getting action plan details:', error);
+    throw error;
+  }
+}
+
+// Verificar si el usuario es responsable del plan
+async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
+  try {
+    const result = await db
+      .select()
+      .from(actionPlans)
+      .where(
+        and(
+          eq(actionPlans.id, actionPlanId),
+          eq(actionPlans.assigneeId, userId)
+        )
+      )
+      .limit(1);
+
+    return result.length > 0;
+  } catch (error) {
+    console.error('Error checking user responsibility:', error);
+    return false;
+  }
+}
+
+// Verificar si el usuario tiene acceso al plan
+async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
+  try {
+    const result = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
+      .where(
+        and(
+          eq(actionPlans.id, actionPlanId),
+          or(
+            eq(actionPlans.assigneeId, userId),
+            eq(actionPlanParticipants.userId, userId)
+          )
+        )
+      )
+      .limit(1);
+
+    return result.length > 0;
+  } catch (error) {
+    console.error('Error checking user access:', error);
+    return false;
+  }
+}
+
+// Agregar tarea a plan de acción
+async addActionPlanTask(taskData: {
+  actionPlanId: string;
+  title: string;
+  description: string;
+  dueDate: Date;
+  assigneeId: string;
+  createdBy: string;
+}) {
+  try {
+    const newTask = await db
+      .insert(actionPlanTasks)
+      .values({
+        id: crypto.randomUUID(),
+        actionPlanId: taskData.actionPlanId,
+        title: taskData.title,
+        description: taskData.description,
+        dueDate: taskData.dueDate,
+        status: 'pending',
+        assigneeId: taskData.assigneeId,
+        createdBy: taskData.createdBy,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    // Actualizar progreso del plan
+    await this.updateActionPlanProgress(taskData.actionPlanId);
+
+    return newTask[0];
+  } catch (error) {
+    console.error('Error adding action plan task:', error);
+    throw error;
+  }
+}
+
+// Obtener tareas de un plan de acción
+async getActionPlanTasks(actionPlanId: string) {
+  try {
+    const tasks = await db
+      .select()
+      .from(actionPlanTasks)
+      .leftJoin(users, eq(actionPlanTasks.assigneeId, users.id))
+      .where(eq(actionPlanTasks.actionPlanId, actionPlanId))
+      .orderBy(actionPlanTasks.createdAt);
+
+    // Para cada tarea, obtener evidencia
+    const tasksWithEvidence = [];
+    for (const taskRow of tasks) {
+      const evidence = await db
+        .select()
+        .from(taskEvidence)
+        .where(eq(taskEvidence.taskId, taskRow.action_plan_tasks.id));
+
+      tasksWithEvidence.push({
+        id: taskRow.action_plan_tasks.id,
+        title: taskRow.action_plan_tasks.title,
+        description: taskRow.action_plan_tasks.description,
+        dueDate: taskRow.action_plan_tasks.dueDate,
+        status: taskRow.action_plan_tasks.status,
+        assigneeId: taskRow.action_plan_tasks.assigneeId,
+        assigneeName: `${taskRow.users.firstName} ${taskRow.users.lastName}`,
+        evidence: evidence.map(e => ({
+          id: e.id,
+          filename: e.filename,
+          url: e.url,
+          uploadedAt: e.uploadedAt,
+          uploadedBy: e.uploadedBy,
+        })),
+        completedAt: taskRow.action_plan_tasks.completedAt,
+        completedBy: taskRow.action_plan_tasks.completedBy,
+        createdAt: taskRow.action_plan_tasks.createdAt,
+      });
+    }
+
+    return tasksWithEvidence;
+  } catch (error) {
+    console.error('Error getting action plan tasks:', error);
+    throw error;
+  }
+}
+
+// Verificar si el usuario puede completar una tarea
+async canUserCompleteTask(taskId: string, userId: string): Promise<boolean> {
+  try {
+    // El usuario puede completar si es el asignado a la tarea o el responsable del plan
+    const result = await db
+      .select()
+      .from(actionPlanTasks)
+      .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
+      .where(
+        and(
+          eq(actionPlanTasks.id, taskId),
+          or(
+            eq(actionPlanTasks.assigneeId, userId),
+            eq(actionPlans.assigneeId, userId)
+          )
+        )
+      )
+      .limit(1);
+
+    return result.length > 0;
+  } catch (error) {
+    console.error('Error checking task completion permission:', error);
+    return false;
+  }
+}
+
+// Actualizar tarea
+async updateActionPlanTask(taskId: string, updates: {
+  status?: string;
+  completedAt?: Date | null;
+  completedBy?: string | null;
+  evidence?: string[];
+  assigneeId?: string;
+}) {
+  try {
+    const updatedTask = await db
+      .update(actionPlanTasks)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(actionPlanTasks.id, taskId))
+      .returning();
+
+    // Si se agrega evidencia, guardarla
+    if (updates.evidence && updates.evidence.length > 0) {
+      for (const evidenceUrl of updates.evidence) {
+        await db.insert(taskEvidence).values({
+          id: crypto.randomUUID(),
+          taskId,
+          filename: evidenceUrl.split('/').pop() || 'evidence',
+          url: evidenceUrl,
+          uploadedAt: new Date(),
+          uploadedBy: updates.completedBy || '',
+        });
+      }
+    }
+
+    return updatedTask[0];
+  } catch (error) {
+    console.error('Error updating action plan task:', error);
+    throw error;
+  }
+}
+
+// Actualizar progreso del plan de acción
+async updateActionPlanProgress(actionPlanId: string) {
+  try {
+    const tasks = await db
+      .select()
+      .from(actionPlanTasks)
+      .where(eq(actionPlanTasks.actionPlanId, actionPlanId));
+
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
+
+    // Actualizar estado del plan si es necesario
+    let newStatus = 'pending';
+    if (progress === 100) {
+      newStatus = 'completed';
+    } else if (progress > 0) {
+      newStatus = 'in_progress';
+    }
+
+    await db
+      .update(actionPlans)
+      .set({
+        progress,
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(actionPlans.id, actionPlanId));
+
+  } catch (error) {
+    console.error('Error updating action plan progress:', error);
+    throw error;
+  }
+}
+
+// Agregar comentario al plan de acción
+async addActionPlanComment(commentData: {
+  actionPlanId: string;
+  content: string;
+  authorId: string;
+  attachments?: string[];
+}) {
+  try {
+    const newComment = await db
+      .insert(actionPlanComments)
+      .values({
+        id: crypto.randomUUID(),
+        actionPlanId: commentData.actionPlanId,
+        content: commentData.content,
+        authorId: commentData.authorId,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    // Si hay archivos adjuntos, guardarlos
+    if (commentData.attachments && commentData.attachments.length > 0) {
+      for (const attachmentUrl of commentData.attachments) {
+        await db.insert(commentAttachments).values({
+          id: crypto.randomUUID(),
+          commentId: newComment[0].id,
+          filename: attachmentUrl.split('/').pop() || 'attachment',
+          url: attachmentUrl,
+          uploadedAt: new Date(),
+          uploadedBy: commentData.authorId,
+        });
+      }
+    }
+
+    return newComment[0];
+  } catch (error) {
+    console.error('Error adding action plan comment:', error);
+    throw error;
+  }
+}
+
+// Obtener comentarios del plan de acción
+async getActionPlanComments(actionPlanId: string) {
+  try {
+    const comments = await db
+      .select()
+      .from(actionPlanComments)
+      .leftJoin(users, eq(actionPlanComments.authorId, users.id))
+      .where(eq(actionPlanComments.actionPlanId, actionPlanId))
+      .orderBy(desc(actionPlanComments.createdAt));
+
+    // Para cada comentario, obtener archivos adjuntos
+    const commentsWithAttachments = [];
+    for (const commentRow of comments) {
+      const attachments = await db
+        .select()
+        .from(commentAttachments)
+        .where(eq(commentAttachments.commentId, commentRow.action_plan_comments.id));
+
+      commentsWithAttachments.push({
+        id: commentRow.action_plan_comments.id,
+        content: commentRow.action_plan_comments.content,
+        authorId: commentRow.action_plan_comments.authorId,
+        authorName: `${commentRow.users.firstName} ${commentRow.users.lastName}`,
+        createdAt: commentRow.action_plan_comments.createdAt,
+        attachments: attachments.map(a => ({
+          id: a.id,
+          filename: a.filename,
+          url: a.url,
+          uploadedAt: a.uploadedAt,
+          uploadedBy: a.uploadedBy,
+        })),
+      });
+    }
+
+    return commentsWithAttachments;
+  } catch (error) {
+    console.error('Error getting action plan comments:', error);
+    throw error;
+  }
+}
+
+// Actualizar plan de acción
+async updateActionPlan(actionPlanId: string, updates: {
+  status?: string;
+  completedAt?: Date | null;
+  completedBy?: string | null;
+}) {
+  try {
+    const updatedPlan = await db
+      .update(actionPlans)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(actionPlans.id, actionPlanId))
+      .returning();
+
+    return updatedPlan[0];
+  } catch (error) {
+    console.error('Error updating action plan:', error);
+    throw error;
+  }
+}
+
+// Verificar si todas las tareas están completadas
+async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
+  try {
+    const tasks = await db
+      .select()
+      .from(actionPlanTasks)
+      .where(eq(actionPlanTasks.actionPlanId, actionPlanId));
+
+    if (tasks.length === 0) {
+      return true; // No hay tareas, consideramos que está "completado"
+    }
+
+    return tasks.every(task => task.status === 'completed');
+  } catch (error) {
+    console.error('Error checking if all tasks are completed:', error);
+    return false;
+  }
+}
+
+// Eliminar tarea
+async deleteActionPlanTask(taskId: string) {
+  try {
+    // Primero eliminar evidencia relacionada
+    await db
+      .delete(taskEvidence)
+      .where(eq(taskEvidence.taskId, taskId));
+
+    // Luego eliminar la tarea
+    await db
+      .delete(actionPlanTasks)
+      .where(eq(actionPlanTasks.id, taskId));
+
+  } catch (error) {
+    console.error('Error deleting action plan task:', error);
+    throw error;
+  }
+}
+
+// Actualizar getActionPlansByUser para incluir estadísticas
+async getActionPlansByUser(userId: string) {
+  try {
+    // Obtener planes donde el usuario es responsable
+    const assignedPlans = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(actionPlans.assigneeId, userId))
+      .orderBy(desc(actionPlans.createdAt));
+
+    // Obtener planes donde el usuario es participante
+    const participantPlans = await db
+      .select()
+      .from(actionPlans)
+      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(actionPlanParticipants.userId, userId))
+      .orderBy(desc(actionPlans.createdAt));
+
+    // Combinar y eliminar duplicados
+    const allPlans = [...assignedPlans, ...participantPlans];
+    const uniquePlans = allPlans.filter((plan, index, self) => 
+      index === self.findIndex(p => p.action_plans.id === plan.action_plans.id)
+    );
+
+    // Procesar cada plan para incluir estadísticas y participantes
+    const plansWithDetails = [];
+    for (const planRow of uniquePlans) {
+      // Obtener participantes del plan
+      const planParticipants = await db
+        .select()
+        .from(actionPlanParticipants)
+        .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+        .where(eq(actionPlanParticipants.actionPlanId, planRow.action_plans.id));
+
+      // Obtener estadísticas de tareas
+      const allTasks = await db
+        .select()
+        .from(actionPlanTasks)
+        .where(eq(actionPlanTasks.actionPlanId, planRow.action_plans.id));
+
+      const completedTasks = allTasks.filter(t => t.status === 'completed');
+      
+      // Obtener número de comentarios
+      const comments = await db
+        .select()
+        .from(actionPlanComments)
+        .where(eq(actionPlanComments.actionPlanId, planRow.action_plans.id));
+
+      // Calcular progreso
+      const progress = allTasks.length > 0 ? Math.round((completedTasks.length / allTasks.length) * 100) : 0;
+
+      plansWithDetails.push({
+        ...planRow.action_plans,
+        assignee: planRow.users,
+        incident: {
+          ...planRow.incidents,
+          center: planRow.centers,
+          type: planRow.incident_types
+        },
+        participants: planParticipants.map(p => ({
+          ...p.action_plan_participants,
+          user: p.users
+        })),
+        // Indicar el rol del usuario en este plan
+        userRole: planRow.action_plans.assigneeId === userId ? 'responsible' : 'participant',
+        // Estadísticas
+        _count: {
+          tasks: allTasks.length,
+          completedTasks: completedTasks.length,
+          comments: comments.length,
+        },
+        progress,
+      });
+    }
+
+    return plansWithDetails;
+  } catch (error) {
+    console.error('Error getting action plans by user:', error);
+    throw error;
+  }
+}
 
 
 

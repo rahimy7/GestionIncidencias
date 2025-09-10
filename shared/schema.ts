@@ -167,16 +167,17 @@ export const actionPlans = pgTable("action_plans", {
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description").notNull(),
   status: actionStatusEnum("status").default("pending").notNull(),
-  priority: incidentPriorityEnum("priority").default("medium").notNull(), // NUEVO CAMPO
+  priority: incidentPriorityEnum("priority").default("medium").notNull(),
   
   // Assignment
   assigneeId: varchar("assignee_id").references(() => users.id).notNull(),
   departmentId: varchar("department_id"),
   
-  // Timeline - CAMPOS ACTUALIZADOS
-  startDate: timestamp("start_date"), // NUEVO CAMPO
+  // Timeline
+  startDate: timestamp("start_date"),
   dueDate: timestamp("due_date").notNull(),
   completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by").references(() => users.id), // AGREGAR ESTA LÍNEA
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -200,6 +201,138 @@ export const incidentHistory = pgTable("incident_history", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+
+// server/schema.ts - Agregar estas tablas al esquema existente
+
+// Tabla para tareas de planes de acción
+export const actionPlanTasks = pgTable('action_plan_tasks', {
+  id: text('id').primaryKey(),
+  actionPlanId: text('action_plan_id').notNull().references(() => actionPlans.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description').default(''),
+  dueDate: timestamp('due_date').notNull(),
+  status: text('status').notNull().default('pending'), // pending, in_progress, completed
+  assigneeId: text('assignee_id').notNull().references(() => users.id),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  completedAt: timestamp('completed_at'),
+  completedBy: text('completed_by').references(() => users.id),
+  createdAt: timestamp('created_at').notNull().default(sql`now()`),
+  updatedAt: timestamp('updated_at').notNull().default(sql`now()`),
+});
+
+// Tabla para evidencia de tareas
+export const taskEvidence = pgTable('task_evidence', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull().references(() => actionPlanTasks.id, { onDelete: 'cascade' }),
+  filename: text('filename').notNull(),
+  url: text('url').notNull(),
+  uploadedAt: timestamp('uploaded_at').notNull().default(sql`now()`),
+  uploadedBy: text('uploaded_by').notNull().references(() => users.id),
+});
+
+// Tabla para comentarios de planes de acción
+export const actionPlanComments = pgTable('action_plan_comments', {
+  id: text('id').primaryKey(),
+  actionPlanId: text('action_plan_id').notNull().references(() => actionPlans.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  authorId: text('author_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull().default(sql`now()`),
+  updatedAt: timestamp('updated_at').notNull().default(sql`now()`),
+});
+
+// Tabla para archivos adjuntos de comentarios
+export const commentAttachments = pgTable('comment_attachments', {
+  id: text('id').primaryKey(),
+  commentId: text('comment_id').notNull().references(() => actionPlanComments.id, { onDelete: 'cascade' }),
+  filename: text('filename').notNull(),
+  url: text('url').notNull(),
+  uploadedAt: timestamp('uploaded_at').notNull().default(sql`now()`),
+  uploadedBy: text('uploaded_by').notNull().references(() => users.id),
+});
+
+// Actualizar tabla de action_plans para incluir progreso
+// Agregar esta columna a la tabla existente mediante migración:
+/*
+ALTER TABLE action_plans 
+ADD COLUMN progress INTEGER DEFAULT 0,
+ADD COLUMN completed_at TIMESTAMP,
+ADD COLUMN completed_by TEXT REFERENCES users(id);
+*/
+
+// Actualizar las relaciones existentes
+export const actionPlanTasksRelations = relations(actionPlanTasks, ({ one, many }) => ({
+  actionPlan: one(actionPlans, {
+    fields: [actionPlanTasks.actionPlanId],
+    references: [actionPlans.id],
+  }),
+  assignee: one(users, {
+    fields: [actionPlanTasks.assigneeId],
+    references: [users.id],
+  }),
+  creator: one(users, {
+    fields: [actionPlanTasks.createdBy],
+    references: [users.id],
+  }),
+  completedByUser: one(users, {
+    fields: [actionPlanTasks.completedBy],
+    references: [users.id],
+  }),
+  evidence: many(taskEvidence),
+}));
+
+export const taskEvidenceRelations = relations(taskEvidence, ({ one }) => ({
+  task: one(actionPlanTasks, {
+    fields: [taskEvidence.taskId],
+    references: [actionPlanTasks.id],
+  }),
+  uploadedByUser: one(users, {
+    fields: [taskEvidence.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+export const actionPlanCommentsRelations = relations(actionPlanComments, ({ one, many }) => ({
+  actionPlan: one(actionPlans, {
+    fields: [actionPlanComments.actionPlanId],
+    references: [actionPlans.id],
+  }),
+  author: one(users, {
+    fields: [actionPlanComments.authorId],
+    references: [users.id],
+  }),
+  attachments: many(commentAttachments),
+}));
+
+export const commentAttachmentsRelations = relations(commentAttachments, ({ one }) => ({
+  comment: one(actionPlanComments, {
+    fields: [commentAttachments.commentId],
+    references: [actionPlanComments.id],
+  }),
+  uploadedByUser: one(users, {
+    fields: [commentAttachments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+// Actualizar las relaciones de actionPlans para incluir las nuevas tablas
+export const actionPlansRelationsUpdated = relations(actionPlans, ({ one, many }) => ({
+  incident: one(incidents, {
+    fields: [actionPlans.incidentId],
+    references: [incidents.id],
+  }),
+  assignee: one(users, {
+    fields: [actionPlans.assigneeId],
+    references: [users.id],
+  }),
+  completedByUser: one(users, {
+    fields: [actionPlans.completedBy],
+    references: [users.id],
+  }),
+  participants: many(actionPlanParticipants),
+  tasks: many(actionPlanTasks),
+  comments: many(actionPlanComments),
+}));
 
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -285,7 +418,11 @@ export const actionPlansRelations = relations(actionPlans, ({ one, many }) => ({
     fields: [actionPlans.assigneeId],
     references: [users.id],
   }),
-  participants: many(actionPlanParticipants), // NUEVA RELACIÓN
+  completedByUser: one(users, {
+    fields: [actionPlans.completedBy],
+    references: [users.id],
+  }),
+  participants: many(actionPlanParticipants),
 }));
 
 export const actionPlanParticipantsRelations = relations(actionPlanParticipants, ({ one }) => ({
