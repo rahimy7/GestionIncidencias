@@ -255,8 +255,7 @@ app.get('/api/centers/my', isAuthenticated, async (req: any, res) => {
   }
 });
 
-  // Incidents endpoints
-// Reemplaza tu handler actual de /api/incidents por este:
+// Incidents endpoints - ORDEN CORRECTO
 app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
   try {
     const {
@@ -270,12 +269,10 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
       offset = "0",
     } = req.query as Record<string, string>;
 
-    // Mapeo a la firma que ya usas en /api/incidents/filtered
-    // (getIncidentsWithAdvancedFilters)
     const filters: any = {};
 
     if (centerId) filters.centerId = centerId;
-    if (typeId)   filters.typeId = typeId;
+    if (typeId) filters.typeId = typeId;
 
     if (startDate) filters.dateFrom = new Date(`${startDate}T00:00:00.000Z`);
     if (endDate) {
@@ -283,8 +280,6 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
       filters.dateTo = end;
     }
 
-    // Unifica el nombre de campo de ordenación con tu storage:
-    // "createdAt" -> "date" (como usas en /filtered)
     filters.sortBy = (sortBy === "createdAt") ? "date" : sortBy;
     filters.sortOrder = (sortDir === "asc") ? "asc" : "desc";
 
@@ -300,58 +295,9 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Failed to fetch incidents" });
   }
 });
-app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-    
-    // Get the incident with all details
-    const incident = await storage.getIncidentById(id);
-    
-    if (!incident) {
-      return res.status(404).json({ message: "Incident not found" });
-    }
 
-    // AGREGAR ESTOS LOGS AQUÍ:
-    console.log('Debug incident access:', {
-      userId,
-      userRole,
-      incidentId: id,
-      incident: {
-        reporterId: incident.reporterId,
-        assigneeId: incident.assigneeId,
-        centerId: incident.centerId
-      }
-    });
-
-    // Check permissions
-    if (userRole !== 'admin') {
-      if (userRole === 'manager' && incident.centerId) {
-        const isManager = await storage.isManagerOfCenter(userId, incident.centerId);
-        console.log(`isManagerOfCenter(${userId}, ${incident.centerId}):`, isManager);
-      }
-
-      const hasAccess = 
-        incident.reporterId === userId ||
-        incident.assigneeId === userId ||
-        (userRole === 'manager' && incident.centerId && await storage.isManagerOfCenter(userId, incident.centerId));
-      
-      console.log('Access check result:', hasAccess);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-    }
-
-    res.json(incident);
-  } catch (error) {
-    console.error("Error fetching incident:", error);
-    res.status(500).json({ message: "Failed to fetch incident" });
-  }
-});
-
-  app.get('/api/incidents/assigned', isAuthenticated, async (req: any, res) => {
+// ESPECÍFICO PRIMERO - antes que /:id
+app.get("/api/incidents/assigned", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const incidents = await storage.getIncidentsByAssignee(userId);
@@ -362,67 +308,38 @@ app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
-  app.post("/api/incidents", isAuthenticated, async (req: any, res) => {
-    try {
-      // FIX: Usar req.user.id en lugar de req.user.claims.sub
-      const userId = req.user.id;
-      const validatedData = insertIncidentSchema.parse({
-        ...req.body,
-        reporterId: userId,
-      });
+app.post("/api/incidents", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const validatedData = insertIncidentSchema.parse({
+      ...req.body,
+      reporterId: userId,
+    });
 
-      const incident = await storage.createIncident(validatedData);
-      res.status(201).json(incident);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
-      console.error("Error creating incident:", error);
-      res.status(500).json({ message: "Failed to create incident" });
+    const incident = await storage.createIncident(validatedData);
+    res.status(201).json(incident);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid data", errors: error.errors });
     }
-  });
+    console.error("Error creating incident:", error);
+    res.status(500).json({ message: "Failed to create incident" });
+  }
+});
 
-  app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      // FIX: Usar req.user.id en lugar de req.user.claims.sub
-      const userId = req.user.id;
-      
-      // Check if user has permission to update this incident
-      const incident = await storage.getIncidentById(id);
-      if (!incident) {
-        return res.status(404).json({ message: "Incident not found" });
-      }
-
-      const updates = req.body;
-      const updatedIncident = await storage.updateIncident(id, updates);
-
-      // Add history entry for the update
-      await storage.addIncidentHistory({
-        incidentId: id,
-        userId: userId,
-        action: "updated",
-        description: "Incidencia actualizada",
-        metadata: updates,
-      });
-
-      res.json(updatedIncident);
-    } catch (error) {
-      console.error("Error updating incident:", error);
-      res.status(500).json({ message: "Failed to update incident" });
-    }
-  });
-
-app.get('/api/incidents/:id', isAuthenticated, async (req: any, res) => {
+// GENÉRICO AL FINAL - después de rutas específicas
+app.get("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
     
-    // Validar que el ID es un UUID válido
+    // Validar UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       console.log(`Invalid UUID format: ${id}`);
       return res.status(400).json({ 
-        error: 'Formato de ID inválido',
+        error: "Formato de ID inválido",
         details: `El ID '${id}' no es un UUID válido`,
         receivedId: id
       });
@@ -432,27 +349,73 @@ app.get('/api/incidents/:id', isAuthenticated, async (req: any, res) => {
     if (!incident) {
       console.log(`Incident not found: ${id}`);
       return res.status(404).json({ 
-        error: 'Incidencia no encontrada',
+        error: "Incidencia no encontrada",
         details: `No se encontró la incidencia con ID ${id}`
       });
+    }
+
+    // Verificar permisos
+    if (userRole !== "admin") {
+      if (userRole === "manager" && incident.centerId) {
+        const isManager = await storage.isManagerOfCenter(userId, incident.centerId);
+        console.log(`isManagerOfCenter(${userId}, ${incident.centerId}):`, isManager);
+      }
+
+      const hasAccess = 
+        incident.reporterId === userId ||
+        incident.assigneeId === userId ||
+        (userRole === "manager" && incident.centerId && await storage.isManagerOfCenter(userId, incident.centerId));
+      
+      console.log("Access check result:", hasAccess);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
     }
 
     res.json(incident);
   } catch (error) {
     console.error(`Error fetching incident ${req.params.id}:`, error);
     res.status(500).json({ 
-      error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : 'Error desconocido'
+      error: "Error interno del servidor",
+      details: error instanceof Error ? error.message : "Error desconocido"
     });
   }
 });
 
-
-// Agregar participante
-app.post('/api/incidents/:id/participants', isAuthenticated, async (req: any, res) => {
+app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const { userId, role = 'participant' } = req.body;
+    const userId = req.user.id;
+    
+    const incident = await storage.getIncidentById(id);
+    if (!incident) {
+      return res.status(404).json({ message: "Incident not found" });
+    }
+
+    const updates = req.body;
+    const updatedIncident = await storage.updateIncident(id, updates);
+
+    await storage.addIncidentHistory({
+      incidentId: id,
+      userId: userId,
+      action: "updated",
+      description: "Incidencia actualizada",
+      metadata: updates,
+    });
+
+    res.json(updatedIncident);
+  } catch (error) {
+    console.error("Error updating incident:", error);
+    res.status(500).json({ message: "Failed to update incident" });
+  }
+});
+
+// Participants endpoints
+app.post("/api/incidents/:id/participants", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role = "participant" } = req.body;
     
     const participant = await storage.addIncidentParticipant({
       incidentId: id,
@@ -467,9 +430,7 @@ app.post('/api/incidents/:id/participants', isAuthenticated, async (req: any, re
   }
 });
 
-
-// Remover participante
-app.delete('/api/incidents/:id/participants/:userId', isAuthenticated, async (req: any, res) => {
+app.delete("/api/incidents/:id/participants/:userId", isAuthenticated, async (req: any, res) => {
   try {
     const { id, userId } = req.params;
     await storage.removeIncidentParticipant(id, userId);
@@ -480,8 +441,8 @@ app.delete('/api/incidents/:id/participants/:userId', isAuthenticated, async (re
   }
 });
 
-// Obtener departamentos
-app.get('/api/departments', isAuthenticated, async (req: any, res) => {
+// Departments endpoint - SOLO UNA VEZ
+app.get("/api/departments", isAuthenticated, async (req: any, res) => {
   try {
     const departments = await storage.getDepartments();
     res.json(departments);
@@ -490,19 +451,6 @@ app.get('/api/departments', isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Failed to fetch departments" });
   }
 });
-
-  // Action plans endpoints
-
-app.get('/api/departments', isAuthenticated, async (req: any, res) => {
-  try {
-    const departments = await storage.getDepartments();
-    res.json(departments);
-  } catch (error) {
-    console.error("Error fetching departments:", error);
-    res.status(500).json({ message: "Failed to fetch departments" });
-  }
-});
-
 // Action plans endpoints
 
 // Middleware específico SOLO para rutas de incidents
@@ -1574,79 +1522,81 @@ app.post('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) =
 });
 
 // PATCH /api/action-plans/:id/tasks/:taskId - Actualizar tarea (marcar como completada)
-app.patch('/api/action-plans/:id/tasks/:taskId', isAuthenticated, async (req: any, res) => {
-  try {
-    const { id, taskId } = req.params;
-    const { status } = req.body;
-    const userId = req.user.id;
-    
-    // Verificar que el usuario puede completar la tarea (responsable del plan o asignado a la tarea)
-    const canComplete = await storage.canUserCompleteTask(taskId, userId);
-    if (!canComplete) {
-      return res.status(403).json({ error: 'No tienes permisos para actualizar esta tarea' });
+app.patch('/api/action-plans/:id/tasks/:taskId', 
+  isAuthenticated,
+  upload.array('evidence', 5),
+  async (req: any, res) => {
+    try {
+      const { id, taskId } = req.params;
+      const { status } = req.body;
+      const userId = req.user.id;
+      
+      const canComplete = await storage.canUserCompleteTask(taskId, userId);
+      if (!canComplete) {
+        return res.status(403).json({ error: 'No tienes permisos para actualizar esta tarea' });
+      }
+      
+      let evidenceFiles: string[] = [];
+      if (req.files && req.files.length > 0) {
+        // Procesar archivos de evidencia
+        // evidenceFiles = await processEvidenceFiles(req.files);
+      }
+      
+      const updatedTask = await storage.updateActionPlanTask(taskId, {
+        status,
+        completedAt: status === 'completed' ? new Date() : null,
+        completedBy: status === 'completed' ? userId : null,
+        evidence: evidenceFiles
+      });
+      
+      await storage.updateActionPlanProgress(id);
+      res.json(updatedTask);
+    } catch (error) {
+      console.error('Error updating task:', error);
+      res.status(500).json({ error: 'Error al actualizar tarea' });
     }
-    
-    // Manejar archivos de evidencia si se envían
-    let evidenceFiles: string[] = [];
-    if (req.files && req.files.evidence) {
-      // Aquí procesarías la subida de archivos
-      // evidenceFiles = await processEvidenceFiles(req.files.evidence);
-    }
-    
-    const updatedTask = await storage.updateActionPlanTask(taskId, {
-      status,
-      completedAt: status === 'completed' ? new Date() : null,
-      completedBy: status === 'completed' ? userId : null,
-      evidence: evidenceFiles
-    });
-    
-    // Si todas las tareas están completadas, actualizar progreso del plan
-    await storage.updateActionPlanProgress(id);
-    
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error updating task:', error);
-    res.status(500).json({ error: 'Error al actualizar tarea' });
   }
-});
+);
 
 // POST /api/action-plans/:id/comments - Agregar comentario a plan de acción
-app.post('/api/action-plans/:id/comments', isAuthenticated, async (req: any, res) => {
-  try {
-    const { id } = req.params;
-    const { content } = req.body;
-    const userId = req.user.id;
-    
-    // Verificar que el usuario tiene acceso al plan
-    const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Sin acceso al plan de acción' });
+app.post('/api/action-plans/:id/comments', 
+  isAuthenticated,
+  upload.array('attachments', 5), // Máximo 5 archivos
+  async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { content } = req.body;
+      const userId = req.user.id;
+      
+      const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Sin acceso al plan de acción' });
+      }
+      
+      if (!content || !content.trim()) {
+        return res.status(400).json({ error: 'El contenido del comentario es requerido' });
+      }
+      
+      // Procesar archivos subidos
+      let attachments: string[] = [];
+      if (req.files && req.files.length > 0) {
+        attachments = req.files.map((file: any) => `/uploads/${file.filename}`);
+      }
+      
+      const comment = await storage.addActionPlanComment({
+        actionPlanId: id,
+        content: content.trim(),
+        authorId: userId,
+        attachments
+      });
+      
+      res.status(201).json(comment);
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      res.status(500).json({ error: 'Error al agregar comentario' });
     }
-    
-    if (!content || !content.trim()) {
-      return res.status(400).json({ error: 'El contenido del comentario es requerido' });
-    }
-    
-    // Manejar archivos adjuntos si se envían
-    let attachments: string[] = [];
-    if (req.files && req.files.attachments) {
-      // attachments = await processAttachmentFiles(req.files.attachments);
-    }
-    
-    const comment = await storage.addActionPlanComment({
-      actionPlanId: id,
-      content: content.trim(),
-      authorId: userId,
-      attachments
-    });
-    
-    res.status(201).json(comment);
-  } catch (error) {
-    console.error('Error adding comment:', error);
-    res.status(500).json({ error: 'Error al agregar comentario' });
   }
-});
-
+);
 // PATCH /api/action-plans/:id - Actualizar estado del plan de acción
 app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
   try {
