@@ -1609,31 +1609,18 @@ async updateActionPlanStatus(planId: string, updateData: {
 // Obtener detalles completos de un plan de acción
 async getActionPlanWithDetails(actionPlanId: string, userId: string) {
   try {
-    // Verificar acceso del usuario
-    const access = await db
-      .select()
-      .from(actionPlans)
-      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
-      .where(
-        and(
-          eq(actionPlans.id, actionPlanId),
-          or(
-            eq(actionPlans.assigneeId, userId),
-            eq(actionPlanParticipants.userId, userId)
-          )
-        )
-      )
-      .limit(1);
-
-    if (access.length === 0) {
-      return null; // Usuario no tiene acceso
+    // Usar la función de verificación actualizada
+    const hasAccess = await this.userHasAccessToActionPlan(actionPlanId, userId);
+    if (!hasAccess) {
+      console.log('❌ User has no access to plan:', { actionPlanId, userId });
+      return null;
     }
 
-    // Obtener plan completo con relaciones - usar JOIN en lugar de leftJoin para users
+    // Obtener plan completo con relaciones
     const planData = await db
       .select()
       .from(actionPlans)
-      .innerJoin(users, eq(actionPlans.assigneeId, users.id)) // Cambiar a innerJoin
+      .innerJoin(users, eq(actionPlans.assigneeId, users.id))
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
       .leftJoin(centers, eq(incidents.centerId, centers.id))
       .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
@@ -1651,11 +1638,11 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
       throw new Error(`No user found for action plan ${actionPlanId}`);
     }
 
-    // Obtener participantes con manejo seguro de nulls
+    // Obtener participantes del plan
     const participantsData = await db
       .select()
       .from(actionPlanParticipants)
-      .innerJoin(users, eq(actionPlanParticipants.userId, users.id)) // innerJoin para garantizar user
+      .innerJoin(users, eq(actionPlanParticipants.userId, users.id))
       .where(eq(actionPlanParticipants.actionPlanId, actionPlanId));
 
     // Obtener tareas
@@ -1668,8 +1655,17 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const progress = tasks.length > 0 ? (completedTasks / tasks.length) * 100 : 0;
 
-    // Determinar rol del usuario
-    const userRole = plan.action_plans.assigneeId === userId ? 'responsible' : 'participant';
+    // Determinar rol del usuario (más específico)
+    let userRole = 'participant';
+    if (plan.action_plans.assigneeId === userId) {
+      userRole = 'responsible';
+    } else if (plan.incidents?.reporterId === userId) {
+      userRole = 'incident_reporter';
+    } else if (plan.incidents?.assigneeId === userId) {
+      userRole = 'incident_assignee';
+    } else if (plan.centers?.managerId === userId) {
+      userRole = 'center_manager';
+    }
 
     return {
       id: plan.action_plans.id,
@@ -1727,30 +1723,87 @@ async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Prom
 }
 
 // Verificar si el usuario tiene acceso al plan
+// En server/storage.ts - Reemplazar userHasAccessToActionPlan
+
 async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
   try {
-    const result = await db
-      .select()
+    console.log('🔐 Checking access:', { actionPlanId, userId });
+    
+    // Obtener información del plan y la incidencia
+    const planInfo = await db
+      .select({
+        planId: actionPlans.id,
+        planAssigneeId: actionPlans.assigneeId,
+        incidentId: actionPlans.incidentId,
+        incidentReporterId: incidents.reporterId,
+        incidentAssigneeId: incidents.assigneeId,
+        centerId: incidents.centerId,
+        centerManagerId: centers.managerId
+      })
       .from(actionPlans)
-      .leftJoin(actionPlanParticipants, eq(actionPlanParticipants.actionPlanId, actionPlans.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .where(eq(actionPlans.id, actionPlanId))
+      .limit(1);
+
+    if (planInfo.length === 0) {
+      console.log('❌ Plan not found');
+      return false;
+    }
+
+    const plan = planInfo[0];
+    console.log('📋 Plan info:', { 
+      centerId: plan.centerId,
+      centerManagerId: plan.centerManagerId,
+      incidentReporterId: plan.incidentReporterId,
+      incidentAssigneeId: plan.incidentAssigneeId,
+      planAssigneeId: plan.planAssigneeId
+    });
+
+    // Verificar acceso directo (responsable del plan, reportero, asignado de incidencia)
+    if (plan.planAssigneeId === userId || 
+        plan.incidentReporterId === userId || 
+        plan.incidentAssigneeId === userId ||
+        plan.centerManagerId === userId) {
+      console.log('✅ Direct access granted');
+      return true;
+    }
+
+    // Verificar si es participante del plan
+    const planParticipants = await db
+      .select()
+      .from(actionPlanParticipants)
       .where(
         and(
-          eq(actionPlans.id, actionPlanId),
-          or(
-            eq(actionPlans.assigneeId, userId),
-            eq(actionPlanParticipants.userId, userId)
-          )
+          eq(actionPlanParticipants.actionPlanId, actionPlanId),
+          eq(actionPlanParticipants.userId, userId)
         )
       )
       .limit(1);
 
-    return result.length > 0;
+    if (planParticipants.length > 0) {
+      console.log('✅ Plan participant access granted');
+      return true;
+    }
+
+    // Verificar si es manager del centro usando isManagerOfCenter
+    if (plan.centerId) {
+      const isManager = await this.isManagerOfCenter(userId, plan.centerId);
+      console.log('🏢 Manager check:', { userId, centerId: plan.centerId, isManager });
+      
+      if (isManager) {
+        console.log('✅ Center manager access granted');
+        return true;
+      }
+    }
+
+    console.log('❌ No access found');
+    return false;
   } catch (error) {
-    console.error('Error checking user access:', error);
+    console.error('💥 Error checking user access:', error);
     return false;
   }
 }
-
 // Agregar tarea a plan de acción
 async addActionPlanTask(taskData: {
   actionPlanId: string;
