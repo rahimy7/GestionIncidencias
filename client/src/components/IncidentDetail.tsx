@@ -27,6 +27,7 @@ import { ParticipantSearch } from '@/components/ParticipantSearch';
 import { ParticipantSelector } from "@/components/ParticipantSelector";
 import { ActionPlansSection } from "./ActionPlansSection";
 import { ActionPlanDetail } from "./ActionPlanDetail"; // Importar el componente existente
+import { IncidentHistory } from "./IncidentHistory";
 
 interface IncidentDetailProps {
   incident: IncidentWithDetails;
@@ -598,9 +599,8 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
 
             {/* Pestaña de Historial */}
             <TabsContent value="history" className="space-y-4">
-              <h3 className="text-lg font-semibold">Historial</h3>
-              <p className="text-muted-foreground">Historial por implementar</p>
-            </TabsContent>
+  <IncidentHistory incidentId={incident.id} />
+</TabsContent>
 
             {/* Pestaña de Evidencia */}
             <TabsContent value="evidence" className="space-y-4">

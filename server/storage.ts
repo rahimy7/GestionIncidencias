@@ -76,7 +76,7 @@ export interface IStorage {
 }): Promise<IncidentWithDetails[]>;
   getIncidentById(id: string): Promise<IncidentWithDetails | undefined>;
   createIncident(incident: InsertIncident): Promise<Incident>;
-  updateIncident(id: string, updates: Partial<InsertIncident>): Promise<Incident>;
+updateIncident(id: string, updates: Partial<InsertIncident>, userId: string): Promise<Incident>;
   getIncidentsByAssignee(userId: string): Promise<(Incident & { center?: Center; reporter?: User })[]>;
   
   // Action Plans operations
@@ -268,15 +268,77 @@ export class DatabaseStorage implements IStorage {
     return newIncident;
   }
 
-  async updateIncident(id: string, updates: Partial<InsertIncident>): Promise<Incident> {
-    const [updatedIncident] = await db
+async updateIncident(incidentId: string, updates: any, userId: string) {
+  try {
+    // Obtener estado actual para comparar
+    const currentIncident = await this.getIncidentById(incidentId);
+    
+    const result = await db
       .update(incidents)
-      .set({ ...updates, updatedAt: new Date() } as any)
-      .where(eq(incidents.id, id))
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(incidents.id, incidentId))
       .returning();
 
-    return updatedIncident;
+    if (result.length === 0) {
+      throw new Error('Incidente no encontrado');
+    }
+
+    // Registrar cambios específicos en historial
+    if (updates.status && updates.status !== currentIncident?.status) {
+      await this.logIncidentAction(
+        incidentId,
+        userId,
+        'status_change',
+        `Estado cambiado de "${currentIncident?.status}" a "${updates.status}"`,
+        { 
+          oldStatus: currentIncident?.status, 
+          newStatus: updates.status 
+        }
+      );
+    }
+
+    if (updates.assigneeId && updates.assigneeId !== currentIncident?.assigneeId) {
+      await this.logIncidentAction(
+        incidentId,
+        userId,
+        'assignment_change',
+        'Incidente reasignado',
+        { 
+          oldAssignee: currentIncident?.assigneeId, 
+          newAssignee: updates.assigneeId 
+        }
+      );
+    }
+
+    if (updates.priority && updates.priority !== currentIncident?.priority) {
+      await this.logIncidentAction(
+        incidentId,
+        userId,
+        'priority_change',
+        `Prioridad cambiada de "${currentIncident?.priority}" a "${updates.priority}"`,
+        { 
+          oldPriority: currentIncident?.priority, 
+          newPriority: updates.priority 
+        }
+      );
+    }
+
+    if (updates.rootCause && updates.rootCause !== currentIncident?.rootCause) {
+      await this.logIncidentAction(
+        incidentId,
+        userId,
+        'root_cause_updated',
+        'Causa raíz actualizada',
+        { rootCause: updates.rootCause }
+      );
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('Error updating incident:', error);
+    throw error;
   }
+}
 
   // Action Plans operations
 
@@ -2107,6 +2169,27 @@ async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
   }
 }
 
+
+// 2. Función helper para registrar en historial (storage.ts)
+async logIncidentAction(
+  incidentId: string, 
+  userId: string, 
+  action: string, 
+  description: string, 
+  metadata?: any
+) {
+  try {
+    await db.insert(incidentHistory).values({
+      incidentId,
+      userId,
+      action,
+      description,
+      metadata: metadata ? JSON.stringify(metadata) : null
+    });
+  } catch (error) {
+    console.error('Error logging incident action:', error);
+  }
+}
 // Eliminar tarea
 async deleteActionPlanTask(taskId: string) {
   try {

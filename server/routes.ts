@@ -14,12 +14,16 @@ import {
   insertActionPlanSchema,
   insertIncidentParticipantSchema,
   Center,
+  incidentHistory,
+  users,
 } from "@shared/schema";
 import { z } from "zod";
 import { hashPassword } from './auth';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
+import { eq, desc } from "drizzle-orm";
+import { db } from "./db.js";
 
 
 interface RequestWithFile extends Express.Request {
@@ -417,7 +421,7 @@ app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
     }
 
     const updates = req.body;
-    const updatedIncident = await storage.updateIncident(id, updates);
+    const updatedIncident = await storage.updateIncident(id, updates, userId);
 
     await storage.addIncidentHistory({
       incidentId: id,
@@ -434,6 +438,41 @@ app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// Endpoint para historial de incidencias
+app.get('/api/incidents/:id/history', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const history = await db
+      .select({
+        id: incidentHistory.id,
+        action: incidentHistory.action,
+        description: incidentHistory.description,
+        metadata: incidentHistory.metadata,
+        createdAt: incidentHistory.createdAt,
+        user: {
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          email: users.email
+        }
+      })
+      .from(incidentHistory)
+      .leftJoin(users, eq(incidentHistory.userId, users.id))
+      .where(eq(incidentHistory.incidentId, id))
+      .orderBy(desc(incidentHistory.createdAt));
+
+    res.json(history);
+  } catch (error) {
+    console.error('Error fetching incident history:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+});
 // Participants endpoints
 app.post("/api/incidents/:id/participants", isAuthenticated, async (req: any, res) => {
   try {
@@ -1755,6 +1794,10 @@ app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Failed to fetch trends" });
   }
 });
+
+
+
+
 
   const httpServer = createServer(app);
   return httpServer;

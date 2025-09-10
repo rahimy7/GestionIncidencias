@@ -52,7 +52,10 @@ export function IncidentForm() {
 
   const createIncidentMutation = useMutation({
     mutationFn: async (data: IncidentFormData & { evidenceFiles: string[] }) => {
-      const response = await apiRequest("POST", "/api/incidents", data);
+      const response = await apiRequest("/api/incidents", {
+  method: "POST",
+  body: JSON.stringify(data),
+});
       return response.json();
     },
     onSuccess: () => {
@@ -87,7 +90,9 @@ export function IncidentForm() {
 
   const handleGetUploadParameters = async () => {
     try {
-      const response = await apiRequest("POST", "/api/objects/upload", {});
+      const response = await apiRequest("/api/objects/upload", {
+  method: "POST",
+});
       const data = await response.json();
       return {
         method: "PUT" as const,
@@ -105,9 +110,12 @@ export function IncidentForm() {
         for (const file of result.successful) {
           if (file.uploadURL) {
             // Set ACL policy for the uploaded file
-            const response = await apiRequest("PUT", "/api/evidence-files", {
-              evidenceFileURL: file.uploadURL,
-            });
+            const response = await apiRequest("/api/evidence-files", {
+  method: "PUT",
+  body: JSON.stringify({
+    evidenceFileURL: file.uploadURL,
+  }),
+});
             const data = await response.json();
             uploadedFiles.push(data.objectPath);
           }
