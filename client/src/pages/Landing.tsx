@@ -76,7 +76,7 @@ export default function Landing() {
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4">
       <div className="max-w-md w-full space-y-6">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-primary mb-2">IncidentTracker</h1>
+          <h1 className="text-4xl font-bold text-primary mb-2">Gestion de Incidencias</h1>
           <p className="text-muted-foreground">
             Sistema de Gestión de Incidencias y No Conformidades
           </p>
@@ -169,26 +169,7 @@ export default function Landing() {
                 </div>
               </div>
 
-              <Button 
-                onClick={() => window.location.href = '/test-users'}
-                variant="outline"
-                className="w-full"
-                disabled={isLoading}
-              >
-                Usuarios de Prueba
-              </Button>
-              
-              <div className="border-t pt-4">
-                <h3 className="font-medium mb-2">Características:</h3>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>• Reporte de incidencias con evidencia fotográfica</li>
-                  <li>• Gestión de planes de acción</li>
-                  <li>• Seguimiento en tiempo real</li>
-                  <li>• Dashboard con métricas</li>
-                  <li>• Control de participantes y roles</li>
-                </ul>
-              </div>
-            </div>
+               </div>
           </CardContent>
         </Card>
       </div>
