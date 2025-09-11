@@ -1,46 +1,65 @@
+// client/src/pages/ManagerDashboard.tsx - VERSIÓN ACTUALIZADA CON SECCIÓN DE INCIDENCIAS COMPLETA
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { 
-  Building2, 
   FileText, 
   Clock, 
   CheckCircle2, 
   AlertCircle, 
   Plus,
-  Users,
+  Building2,
   TrendingUp,
   Calendar,
+  BarChart3,
+  PieChart,
+  Target,
+  Users,
+  ClipboardList,
+  CheckSquare,
+  Activity,
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  Minus,
   Search,
   Filter,
   Eye,
-  ArrowUpDown
+  Edit,
+  MoreVertical,
+  User
 } from "lucide-react";
 import { Link } from "wouter";
-import { useState } from "react";
-
-// Interfaces para TypeScript
-interface Center {
-  id: string;
-  name: string;
-  code: string;
-  address?: string | null;
-  managerId?: string | null;
-  createdAt?: Date | null;
-}
-
-interface User {
-  id: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-}
+import { 
+  LineChart, 
+  Line, 
+  BarChart, 
+  Bar, 
+  PieChart as RechartsPieChart, 
+  Cell, 
+  XAxis, 
+  YAxis, 
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+  Pie,
+  Area,
+  AreaChart
+} from "recharts";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Incident {
   id: string;
@@ -49,28 +68,133 @@ interface Incident {
   description: string;
   status: string;
   priority: string;
-  centerId: string;
-  typeId?: string;
-  reporterId: string;
-  assigneeId?: string | null;
   createdAt: string;
   updatedAt: string;
-  reporter?: User;
-  assignee?: User;
-  center?: Center;
+  assigneeId?: string;
+  reporterId: string;
+  reporter?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  assignee?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  type?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface CenterInfo {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface CenterStats {
+  totalIncidents: number;
+  inProgress: number;
+  critical: number;
+  completed: number;
+  reported: number;
+  assigned: number;
+  resolutionRate: number;
+  actionPlans: {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    overdue: number;
+  };
+  tasks: {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    overdue: number;
+  };
+  trends: Array<{
+    month: string;
+    incidents: number;
+    resolved: number;
+    actionPlans: number;
+    tasksCompleted: number;
+  }>;
+  performanceMetrics: {
+    avgResolutionTime: number;
+    avgResponseTime: number;
+    completionRate: number;
+    taskCompletionRate: number;
+  };
+}
+
+interface ActionPlan {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  dueDate: string;
+  createdAt: string;
+  completedAt?: string;
+  assignee: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  incident: {
+    id: string;
+    incidentNumber: string;
+    title: string;
+    status: string;
+    priority: string;
+    type?: {
+      id: string;
+      name: string;
+    };
+  };
+  participants: Array<{
+    id: string;
+    userId: string;
+    role: string;
+    user: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+  }>;
+  _count: {
+    tasks: number;
+    completedTasks: number;
+    comments: number;
+  };
+  progress: number;
 }
 
 export function ManagerDashboard() {
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("date");
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("overview");
   
+  // Estados para filtros en la sección de incidencias
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("date");
+  const [showFilters, setShowFilters] = useState(false);
+
+  
+
   // Obtener información del centro del manager
   const { data: centerInfo, isLoading: centerLoading } = useQuery({
     queryKey: ['/api/centers/my'],
-    queryFn: async () => {
+    queryFn: async (): Promise<CenterInfo> => {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token found');
 
@@ -91,10 +215,10 @@ export function ManagerDashboard() {
     retry: 1,
   });
 
-  // Obtener todas las incidencias del centro usando el endpoint correcto
+  // Obtener todas las incidencias del centro con filtros
   const { data: centerIncidents, isLoading: incidentsLoading } = useQuery({
     queryKey: ['/api/incidents/center'],
-    queryFn: async () => {
+    queryFn: async (): Promise<Incident[]> => {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token found');
 
@@ -115,14 +239,14 @@ export function ManagerDashboard() {
     retry: 1,
   });
 
-  // Obtener estadísticas del centro
-const { data: centerStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['/api/dashboard/center-stats'],
-    queryFn: async () => {
+  // Obtener estadísticas detalladas del centro
+  const { data: centerStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['/api/dashboard/center-stats-detailed'],
+    queryFn: async (): Promise<CenterStats> => {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token found');
 
-      const response = await fetch('/api/dashboard/center-stats', {
+      const response = await fetch('/api/dashboard/center-stats-detailed', {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -139,77 +263,180 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
     retry: 1,
   });
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-500';
-    }
-  };
+  const [actionPlanSearchTerm, setActionPlanSearchTerm] = useState("");
+const [actionPlanStatusFilter, setActionPlanStatusFilter] = useState("all");
+const [actionPlanSortBy, setActionPlanSortBy] = useState("date");
+const [showActionPlanFilters, setShowActionPlanFilters] = useState(false);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'text-green-600 bg-green-50';
-      case 'in_progress': return 'text-blue-600 bg-blue-50';
-      case 'assigned': return 'text-purple-600 bg-purple-50';
-      case 'pending_approval': return 'text-orange-600 bg-orange-50';
-      case 'reported': return 'text-gray-600 bg-gray-50';
-      default: return 'text-gray-600 bg-gray-50';
-    }
-  };
+// Obtener planes de acción del centro
+const { data: centerActionPlans, isLoading: actionPlansLoading } = useQuery({
+  queryKey: ['/api/action-plans/center'],
+  queryFn: async (): Promise<ActionPlan[]> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No auth token found');
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Completada';
-      case 'in_progress': return 'En Progreso';
-      case 'assigned': return 'Asignada';
-      case 'pending_approval': return 'Pendiente Aprobación';
-      case 'reported': return 'Reportada';
-      default: return status;
+    const response = await fetch('/api/action-plans/center', {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+    
+    return response.json();
+  },
+  enabled: !!user && !!centerInfo?.id,
+  retry: 1,
+});
 
-  const getPriorityText = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'Crítica';
-      case 'high': return 'Alta';
-      case 'medium': return 'Media';
-      case 'low': return 'Baja';
-      default: return priority;
+// Procesar y filtrar planes de acción
+const filteredActionPlans = useMemo(() => {
+  if (!centerActionPlans) return [];
+
+  return centerActionPlans.filter((plan: ActionPlan) => {
+    // Filtro por búsqueda
+    if (actionPlanSearchTerm) {
+      const searchLower = actionPlanSearchTerm.toLowerCase();
+      const matchesSearch = 
+        plan.title.toLowerCase().includes(searchLower) ||
+        plan.description.toLowerCase().includes(searchLower) ||
+        plan.incident?.title.toLowerCase().includes(searchLower) ||
+        plan.incident?.incidentNumber.toLowerCase().includes(searchLower) ||
+        plan.assignee?.firstName.toLowerCase().includes(searchLower) ||
+        plan.assignee?.lastName.toLowerCase().includes(searchLower);
+      
+      if (!matchesSearch) return false;
     }
-  };
 
-  if (centerLoading || statsLoading) {
+    // Filtro por estado
+    if (actionPlanStatusFilter !== "all" && plan.status !== actionPlanStatusFilter) {
+      return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
+    switch (actionPlanSortBy) {
+      case "status":
+        return a.status.localeCompare(b.status);
+      case "progress":
+        return b.progress - a.progress;
+      case "dueDate":
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      case "date":
+      default:
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  });
+}, [centerActionPlans, actionPlanSearchTerm, actionPlanStatusFilter, actionPlanSortBy]);
+
+// Funciones de utilidad para planes de acción
+const getActionPlanStatusBadgeVariant = (status: string) => {
+  switch (status) {
+    case 'completed': return 'default';
+    case 'in_progress': return 'secondary';
+    case 'pending': return 'outline';
+    case 'overdue': return 'destructive';
+    default: return 'outline';
+  }
+};
+
+const getActionPlanStatusText = (status: string) => {
+  switch (status) {
+    case 'pending': return 'Pendiente';
+    case 'in_progress': return 'En Progreso';
+    case 'completed': return 'Completado';
+    case 'overdue': return 'Atrasado';
+    default: return status;
+  }
+};
+
+const getActionPlanStatusColor = (status: string) => {
+  switch (status) {
+    case 'pending': return 'text-gray-600';
+    case 'in_progress': return 'text-blue-600';
+    case 'completed': return 'text-green-600';
+    case 'overdue': return 'text-red-600';
+    default: return 'text-gray-600';
+  }
+};
+
+const isOverdue = (dueDate: string, status: string) => {
+  return status !== 'completed' && new Date(dueDate) < new Date();
+};
+
+  // Procesar y filtrar incidencias
+  const filteredIncidents = useMemo(() => {
+    if (!centerIncidents) return [];
+
+    return centerIncidents.filter((incident: Incident) => {
+      // Filtro por búsqueda
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const matchesSearch = 
+          incident.title.toLowerCase().includes(searchLower) ||
+          incident.description.toLowerCase().includes(searchLower) ||
+          incident.incidentNumber.toLowerCase().includes(searchLower) ||
+          incident.reporter?.firstName.toLowerCase().includes(searchLower) ||
+          incident.reporter?.lastName.toLowerCase().includes(searchLower) ||
+          incident.assignee?.firstName.toLowerCase().includes(searchLower) ||
+          incident.assignee?.lastName.toLowerCase().includes(searchLower);
+        
+        if (!matchesSearch) return false;
+      }
+
+      // Filtro por estado
+      if (statusFilter !== "all" && incident.status !== statusFilter) {
+        return false;
+      }
+
+      // Filtro por prioridad
+      if (priorityFilter !== "all" && incident.priority !== priorityFilter) {
+        return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      switch (sortBy) {
+        case "priority":
+          const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+          return (priorityOrder[b.priority as keyof typeof priorityOrder] || 0) - 
+                 (priorityOrder[a.priority as keyof typeof priorityOrder] || 0);
+        case "status":
+          return a.status.localeCompare(b.status);
+        case "date":
+        default:
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+    });
+  }, [centerIncidents, searchTerm, statusFilter, priorityFilter, sortBy]);
+
+  if (centerLoading || !centerInfo) {
     return (
       <Layout>
         <div className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-24 bg-gray-200 rounded"></div>
-              ))}
-            </div>
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2 text-muted-foreground">Cargando información del centro...</p>
           </div>
         </div>
       </Layout>
     );
   }
 
-  // Si no hay centro asignado al manager
-  if (!centerInfo) {
+  // Mensaje si no tiene centro asignado
+  if (!centerInfo.id) {
     return (
       <Layout>
         <div className="p-6">
           <div className="text-center py-12">
             <Building2 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Sin Centro Asignado</h1>
-            <p className="text-muted-foreground mb-4">
-              No tienes un centro o tienda asignado para gestionar. 
-            </p>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-2xl font-bold text-foreground mb-2">
+              Centro no asignado
+            </h2>
+            <p className="text-muted-foreground">
               Contacta al administrador para que te asigne un centro.
             </p>
           </div>
@@ -218,7 +445,7 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
     );
   }
 
-  // Calcular estadísticas básicas
+  // Calcular estadísticas básicas desde incidencias
   const allIncidents = centerIncidents || [];
   const totalIncidents = allIncidents.length;
   const pendingIncidents = allIncidents.filter((i: Incident) => 
@@ -234,8 +461,84 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
     i.priority === 'critical' && i.status !== 'completed'
   );
 
-  // Obtener incidencias recientes (últimas 10)
-  const recentIncidents = allIncidents.slice(0, 10);
+  // Función para obtener el color del badge según el estado
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'completed': return 'default';
+      case 'in_progress': return 'secondary';
+      case 'assigned': return 'outline';
+      case 'reported': return 'outline';
+      case 'pending_approval': return 'secondary';
+      default: return 'outline';
+    }
+  };
+
+  // Función para obtener el color del badge según la prioridad
+  const getPriorityBadgeColor = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'bg-red-100 text-red-800 border-red-200';
+      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Función para obtener texto del estado
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'reported': return 'Reportada';
+      case 'assigned': return 'Asignada';
+      case 'in_progress': return 'En Progreso';
+      case 'pending_approval': return 'Pendiente Aprobación';
+      case 'completed': return 'Completada';
+      default: return status;
+    }
+  };
+
+  // Función para obtener texto de la prioridad
+  const getPriorityText = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'Crítica';
+      case 'high': return 'Alta';
+      case 'medium': return 'Media';
+      case 'low': return 'Baja';
+      default: return priority;
+    }
+  };
+
+  // Datos para gráficos (usar datos reales si están disponibles, sino usar datos calculados)
+  const incidentStatusData = [
+    { name: 'Reportadas', value: pendingIncidents.length, color: '#3b82f6' },
+    { name: 'En Progreso', value: inProgressIncidents.length, color: '#eab308' },
+    { name: 'Completadas', value: completedIncidents.length, color: '#22c55e' },
+    { name: 'Críticas', value: criticalIncidents.length, color: '#ef4444' },
+  ];
+
+  // Datos de tendencias (últimos 6 meses)
+  const trendData = centerStats?.trends || [
+    { month: 'Jul', incidents: 12, resolved: 10, actionPlans: 8, tasksCompleted: 25 },
+    { month: 'Ago', incidents: 15, resolved: 14, actionPlans: 12, tasksCompleted: 30 },
+    { month: 'Sep', incidents: 18, resolved: 16, actionPlans: 15, tasksCompleted: 35 },
+    { month: 'Oct', incidents: 14, resolved: 13, actionPlans: 11, tasksCompleted: 28 },
+    { month: 'Nov', incidents: 20, resolved: 18, actionPlans: 18, tasksCompleted: 42 },
+    { month: 'Dic', incidents: 16, resolved: 15, actionPlans: 14, tasksCompleted: 38 },
+  ];
+
+  // Función para obtener el ícono de tendencia
+  const getTrendIcon = (current: number, previous: number) => {
+    if (current > previous) return <ArrowUp className="h-4 w-4 text-green-600" />;
+    if (current < previous) return <ArrowDown className="h-4 w-4 text-red-600" />;
+    return <Minus className="h-4 w-4 text-gray-600" />;
+  };
+
+  // Métricas de rendimiento
+  const performanceMetrics = centerStats?.performanceMetrics || {
+    avgResolutionTime: 3.2,
+    avgResponseTime: 0.5,
+    completionRate: 85,
+    taskCompletionRate: 78
+  };
 
   return (
     <Layout>
@@ -261,134 +564,319 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Total Incidencias</p>
-                  <p className="text-2xl font-bold text-foreground">{totalIncidents}</p>
-                </div>
-                <FileText className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Pendientes</p>
-                  <p className="text-2xl font-bold text-foreground">{pendingIncidents.length}</p>
-                </div>
-                <Clock className="h-8 w-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
-                  <p className="text-2xl font-bold text-foreground">{inProgressIncidents.length}</p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Críticas</p>
-                  <p className="text-2xl font-bold text-foreground">{criticalIncidents.length}</p>
-                </div>
-                <AlertCircle className="h-8 w-8 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs for different views */}
-        <Tabs defaultValue="recent" className="space-y-4">
+        {/* Tabs para organizar el contenido */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="recent">Recientes</TabsTrigger>
-            <TabsTrigger value="pending">Pendientes ({pendingIncidents.length})</TabsTrigger>
-            <TabsTrigger value="critical">Críticas ({criticalIncidents.length})</TabsTrigger>
-            <TabsTrigger value="all">Todas ({totalIncidents})</TabsTrigger>
+            <TabsTrigger value="overview">Resumen</TabsTrigger>
+            <TabsTrigger value="incidents">Incidencias ({totalIncidents})</TabsTrigger>
+            <TabsTrigger value="action-plans">Planes de Acción</TabsTrigger>
+            <TabsTrigger value="performance">Rendimiento</TabsTrigger>
           </TabsList>
 
-          {/* Filtros y búsqueda para la vista "Todas" */}
-          <TabsContent value="all" className="space-y-4">
+          {/* Tab: Resumen General */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Tarjetas de estadísticas principales */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Total Incidencias</p>
+                      <p className="text-2xl font-bold">{totalIncidents}</p>
+                    </div>
+                    <FileText className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    {getTrendIcon(totalIncidents, trendData[trendData.length - 2]?.incidents || 0)}
+                    <span className="text-xs text-muted-foreground ml-1">vs mes anterior</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
+                      <p className="text-2xl font-bold">{inProgressIncidents.length}</p>
+                    </div>
+                    <Clock className="h-8 w-8 text-yellow-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <Activity className="h-4 w-4 text-blue-600" />
+                    <span className="text-xs text-muted-foreground ml-1">requieren atención</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Completadas</p>
+                      <p className="text-2xl font-bold">{completedIncidents.length}</p>
+                    </div>
+                    <CheckCircle2 className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <Target className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-muted-foreground ml-1">
+                      {totalIncidents > 0 ? Math.round((completedIncidents.length / totalIncidents) * 100) : 0}% tasa de resolución
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Críticas</p>
+                      <p className="text-2xl font-bold">{criticalIncidents.length}</p>
+                    </div>
+                    <AlertCircle className="h-8 w-8 text-red-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                    <span className="text-xs text-muted-foreground ml-1">atención urgente</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Gráficos de resumen */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Gráfico de tendencias */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Tendencias Mensuales
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={trendData}>
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Area 
+                        type="monotone" 
+                        dataKey="incidents" 
+                        stackId="1"
+                        stroke="#3b82f6" 
+                        fill="#3b82f6" 
+                        fillOpacity={0.3}
+                        name="Incidencias"
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="resolved" 
+                        stackId="2"
+                        stroke="#22c55e" 
+                        fill="#22c55e" 
+                        fillOpacity={0.3}
+                        name="Resueltas"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Distribución de estados */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PieChart className="h-5 w-5" />
+                    Estado de Incidencias
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={incidentStatusData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {incidentStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Tab: Incidencias - SECCIÓN COMPLETA CON FILTROS */}
+          <TabsContent value="incidents" className="space-y-6">
+            {/* Controles de filtros y búsqueda */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Filter className="h-5 w-5" />
-                  Filtros y Búsqueda
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Gestión de Incidencias del Centro
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="flex items-center gap-2"
+                  >
+                    <Filter className="h-4 w-4" />
+                    {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                      <Input
-                        placeholder="Buscar por título, descripción o número..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
+              {showFilters && (
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Búsqueda */}
+                    <div className="lg:col-span-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                          placeholder="Buscar por título, descripción, número o persona..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Filtro por estado */}
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los estados</SelectItem>
+                        <SelectItem value="reported">Reportada</SelectItem>
+                        <SelectItem value="assigned">Asignada</SelectItem>
+                        <SelectItem value="in_progress">En Progreso</SelectItem>
+                        <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
+                        <SelectItem value="completed">Completada</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtro por prioridad */}
+                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Prioridad" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las prioridades</SelectItem>
+                        <SelectItem value="critical">Crítica</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                        <SelectItem value="medium">Media</SelectItem>
+                        <SelectItem value="low">Baja</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Select value={sortBy} onValueChange={setSortBy}>
+                        <SelectTrigger className="w-48">
+                          <SelectValue placeholder="Ordenar por" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="date">Fecha (más reciente)</SelectItem>
+                          <SelectItem value="priority">Prioridad</SelectItem>
+                          <SelectItem value="status">Estado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Botón para limpiar filtros */}
+                    {(searchTerm || statusFilter !== "all" || priorityFilter !== "all") && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setPriorityFilter("all");
+                        }}
+                      >
+                        Limpiar Filtros
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
+            {/* Estadísticas rápidas de filtros activos */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="cursor-pointer" onClick={() => setStatusFilter("all")}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-6 w-6 text-blue-600" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total</p>
+                      <p className="text-xl font-bold">{filteredIncidents.length}</p>
                     </div>
                   </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full md:w-48">
-                      <SelectValue placeholder="Estado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los estados</SelectItem>
-                      <SelectItem value="reported">Reportada</SelectItem>
-                      <SelectItem value="assigned">Asignada</SelectItem>
-                      <SelectItem value="in_progress">En Progreso</SelectItem>
-                      <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
-                      <SelectItem value="completed">Completada</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="w-full md:w-48">
-                      <SelectValue placeholder="Prioridad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas las prioridades</SelectItem>
-                      <SelectItem value="critical">Crítica</SelectItem>
-                      <SelectItem value="high">Alta</SelectItem>
-                      <SelectItem value="medium">Media</SelectItem>
-                      <SelectItem value="low">Baja</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-full md:w-48">
-                      <SelectValue placeholder="Ordenar por" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="date">Fecha (más reciente)</SelectItem>
-                      <SelectItem value="priority">Prioridad</SelectItem>
-                      <SelectItem value="status">Estado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-            
-            {/* Lista de todas las incidencias con filtros aplicados */}
+                </CardContent>
+              </Card>
+
+              <Card className="cursor-pointer" onClick={() => setStatusFilter("in_progress")}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-6 w-6 text-yellow-600" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">En Progreso</p>
+                      <p className="text-xl font-bold">
+                        {filteredIncidents.filter(i => i.status === 'in_progress').length}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="cursor-pointer" onClick={() => setPriorityFilter("critical")}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-6 w-6 text-red-600" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Críticas</p>
+                      <p className="text-xl font-bold">
+                        {filteredIncidents.filter(i => i.priority === 'critical').length}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="cursor-pointer" onClick={() => setStatusFilter("completed")}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Completadas</p>
+                      <p className="text-xl font-bold">
+                        {filteredIncidents.filter(i => i.status === 'completed').length}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Lista de incidencias filtradas */}
             <Card>
               <CardHeader>
                 <CardTitle>
-                  Todas las Incidencias del Centro 
-                  {(statusFilter !== 'all' || priorityFilter !== 'all' || searchTerm) && 
-                    ` (${allIncidents.length} ${allIncidents.length === 1 ? 'resultado' : 'resultados'})`
+                  Incidencias 
+                  {filteredIncidents.length !== totalIncidents && 
+                    ` (${filteredIncidents.length} de ${totalIncidents})`
                   }
                 </CardTitle>
               </CardHeader>
@@ -398,136 +886,132 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                     <p className="mt-2 text-muted-foreground">Cargando incidencias...</p>
                   </div>
-                ) : allIncidents.length === 0 ? (
+                ) : filteredIncidents.length === 0 ? (
                   <div className="text-center py-8">
                     <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-medium mb-2">
-                      {(statusFilter !== 'all' || priorityFilter !== 'all' || searchTerm) 
-                        ? 'No se encontraron incidencias'
-                        : 'No hay incidencias registradas'
+                      {(statusFilter !== "all" || priorityFilter !== "all" || searchTerm) 
+                        ? "No se encontraron incidencias que coincidan con los filtros"
+                        : "No hay incidencias registradas"
                       }
                     </h3>
                     <p className="text-muted-foreground mb-4">
-                      {(statusFilter !== 'all' || priorityFilter !== 'all' || searchTerm)
-                        ? 'Intenta ajustar los filtros o términos de búsqueda'
-                        : 'Las incidencias aparecerán aquí cuando se reporten'
+                      {(statusFilter !== "all" || priorityFilter !== "all" || searchTerm)
+                        ? "Intenta ajustar los filtros para ver más resultados."
+                        : "Cuando se reporten incidencias en tu centro, aparecerán aquí."
                       }
                     </p>
-                    <Link href="/incidents/new">
-                      <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Reportar Primera Incidencia
+                    {(statusFilter !== "all" || priorityFilter !== "all" || searchTerm) && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStatusFilter("all");
+                          setPriorityFilter("all");
+                        }}
+                      >
+                        Limpiar Filtros
                       </Button>
-                    </Link>
+                    )}
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {allIncidents.map((incident: Incident) => (
-                      <div 
-                        key={incident.id}
-                        className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                        data-testid={`incident-${incident.id}`}
-                      >
+                  <div className="space-y-3">
+                    {filteredIncidents.map((incident: Incident) => (
+                      <div key={incident.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                         <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="font-medium text-primary">
-                                {incident.incidentNumber}
-                              </span>
-                              <div className={`w-3 h-3 rounded-full ${getPriorityColor(incident.priority)}`} />
-                              <Badge variant="outline" className={getStatusColor(incident.status)}>
+                          {/* Información principal */}
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-medium text-lg">{incident.title}</h3>
+                              <Badge
+                                variant={getStatusBadgeVariant(incident.status)}
+                                className="text-xs"
+                              >
                                 {getStatusText(incident.status)}
                               </Badge>
-                              <Badge variant="secondary">
+                              <Badge
+                                variant="outline"
+                                className={`text-xs ${getPriorityBadgeColor(incident.priority)}`}
+                              >
                                 {getPriorityText(incident.priority)}
                               </Badge>
                             </div>
-                            <h3 className="font-semibold mb-1">{incident.title}</h3>
-                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+
+                            <p className="text-sm text-muted-foreground line-clamp-2">
                               {incident.description}
                             </p>
+
                             <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span>
-                                Reportado por: {incident.reporter?.firstName} {incident.reporter?.lastName || incident.reporter?.email}
+                              <span className="flex items-center gap-1">
+                                <FileText className="h-3 w-3" />
+                                {incident.incidentNumber}
                               </span>
-                              <span>•</span>
-                              <span>
+                              
+                              {incident.reporter && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  Reportó: {incident.reporter.firstName} {incident.reporter.lastName}
+                                </span>
+                              )}
+
+                              {incident.assignee && (
+                                <span className="flex items-center gap-1">
+                                  <Target className="h-3 w-3" />
+                                  Asignado: {incident.assignee.firstName} {incident.assignee.lastName}
+                                </span>
+                              )}
+
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
                                 {new Date(incident.createdAt).toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: '2-digit',
                                   year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })}
                               </span>
-                              {incident.assignee && (
-                                <>
-                                  <span>•</span>
-                                  <span>
-                                    Asignado a: {incident.assignee.firstName} {incident.assignee.lastName}
-                                  </span>
-                                </>
+
+                              {incident.type && (
+                                <span className="flex items-center gap-1">
+                                  <ClipboardList className="h-3 w-3" />
+                                  {incident.type.name}
+                                </span>
                               )}
                             </div>
                           </div>
-                          <Link href={`/incidents/${incident.id}`}>
-                            <Button variant="outline" size="sm" className="flex items-center gap-2">
-                              <Eye className="h-4 w-4" />
-                              Ver Detalle
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          {/* Vista de incidencias recientes */}
-          <TabsContent value="recent" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Incidencias Recientes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentIncidents.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No hay incidencias recientes</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {recentIncidents.map((incident: Incident) => (
-                      <div 
-                        key={incident.id}
-                        className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="font-medium text-primary">
-                                {incident.incidentNumber}
-                              </span>
-                              <div className={`w-3 h-3 rounded-full ${getPriorityColor(incident.priority)}`} />
-                              <Badge variant="outline" className={getStatusColor(incident.status)}>
-                                {getStatusText(incident.status)}
-                              </Badge>
-                            </div>
-                            <h3 className="font-semibold mb-1">{incident.title}</h3>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              Reportado por: {incident.reporter?.firstName} {incident.reporter?.lastName || incident.reporter?.email}
-                            </p>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(incident.createdAt).toLocaleDateString('es-ES')}
-                            </div>
+                          {/* Acciones */}
+                          <div className="flex items-center gap-2 ml-4">
+                            <Link href={`/incidents/${incident.id}`}>
+                              <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                                <Eye className="h-4 w-4" />
+                                Ver
+                              </Button>
+                            </Link>
+                            
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/incidents/${incident.id}`} className="flex items-center gap-2">
+                                    <Eye className="h-4 w-4" />
+                                    Ver Detalles
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/incidents/${incident.id}/edit`} className="flex items-center gap-2">
+                                    <Edit className="h-4 w-4" />
+                                    Editar
+                                  </Link>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                          <Link href={`/incidents/${incident.id}`}>
-                            <Button variant="outline" size="sm">
-                              Ver Detalle
-                            </Button>
-                          </Link>
                         </div>
                       </div>
                     ))}
@@ -535,117 +1019,527 @@ const { data: centerStats, isLoading: statsLoading } = useQuery({
                 )}
               </CardContent>
             </Card>
+
+            {/* Resumen de filtros aplicados */}
+            {(searchTerm || statusFilter !== "all" || priorityFilter !== "all") && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Filter className="h-4 w-4" />
+                    <span>Filtros aplicados:</span>
+                    {searchTerm && (
+                      <Badge variant="outline" className="text-xs">
+                        Búsqueda: "{searchTerm}"
+                      </Badge>
+                    )}
+                    {statusFilter !== "all" && (
+                      <Badge variant="outline" className="text-xs">
+                        Estado: {getStatusText(statusFilter)}
+                      </Badge>
+                    )}
+                    {priorityFilter !== "all" && (
+                      <Badge variant="outline" className="text-xs">
+                        Prioridad: {getPriorityText(priorityFilter)}
+                      </Badge>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
-          {/* Vista de incidencias pendientes */}
-          <TabsContent value="pending" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Incidencias Pendientes de Acción</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pendingIncidents.length === 0 ? (
-                  <div className="text-center py-8">
-                    <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium mb-2">¡Excelente trabajo!</h3>
-                    <p className="text-muted-foreground">No hay incidencias pendientes por atender</p>
+          {/* Tab: Planes de Acción */}
+     <TabsContent value="action-plans" className="space-y-6">
+  {/* Controles de filtros y búsqueda para planes de acción */}
+  <Card>
+    <CardHeader>
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <ClipboardList className="h-5 w-5" />
+          Planes de Acción del Centro
+        </CardTitle>
+        <Button
+          variant="outline"
+          onClick={() => setShowActionPlanFilters(!showActionPlanFilters)}
+          className="flex items-center gap-2"
+        >
+          <Filter className="h-4 w-4" />
+          {showActionPlanFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+        </Button>
+      </div>
+    </CardHeader>
+    {showActionPlanFilters && (
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Búsqueda */}
+          <div className="lg:col-span-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Buscar por título, descripción, incidencia o responsable..."
+                value={actionPlanSearchTerm}
+                onChange={(e) => setActionPlanSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Filtro por estado */}
+          <Select value={actionPlanStatusFilter} onValueChange={setActionPlanStatusFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los estados</SelectItem>
+              <SelectItem value="pending">Pendiente</SelectItem>
+              <SelectItem value="in_progress">En Progreso</SelectItem>
+              <SelectItem value="completed">Completado</SelectItem>
+              <SelectItem value="overdue">Atrasado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Ordenamiento */}
+          <Select value={actionPlanSortBy} onValueChange={setActionPlanSortBy}>
+            <SelectTrigger>
+              <SelectValue placeholder="Ordenar por" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date">Fecha (más reciente)</SelectItem>
+              <SelectItem value="dueDate">Fecha límite</SelectItem>
+              <SelectItem value="status">Estado</SelectItem>
+              <SelectItem value="progress">Progreso</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Botón para limpiar filtros */}
+        {(actionPlanSearchTerm || actionPlanStatusFilter !== "all") && (
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionPlanSearchTerm("");
+                setActionPlanStatusFilter("all");
+              }}
+            >
+              Limpiar Filtros
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    )}
+  </Card>
+
+  {/* Estadísticas rápidas de planes de acción */}
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("all")}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <ClipboardList className="h-6 w-6 text-blue-600" />
+          <div>
+            <p className="text-sm text-muted-foreground">Total</p>
+            <p className="text-xl font-bold">{filteredActionPlans.length}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("in_progress")}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <Activity className="h-6 w-6 text-yellow-600" />
+          <div>
+            <p className="text-sm text-muted-foreground">En Progreso</p>
+            <p className="text-xl font-bold">
+              {filteredActionPlans.filter(p => p.status === 'in_progress').length}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("overdue")}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <AlertTriangle className="h-6 w-6 text-red-600" />
+          <div>
+            <p className="text-sm text-muted-foreground">Atrasados</p>
+            <p className="text-xl font-bold">
+              {filteredActionPlans.filter(p => isOverdue(p.dueDate, p.status)).length}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("completed")}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="h-6 w-6 text-green-600" />
+          <div>
+            <p className="text-sm text-muted-foreground">Completados</p>
+            <p className="text-xl font-bold">
+              {filteredActionPlans.filter(p => p.status === 'completed').length}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Lista de planes de acción filtrados */}
+  <Card>
+    <CardHeader>
+      <CardTitle>
+        Planes de Acción 
+        {filteredActionPlans.length !== (centerActionPlans?.length || 0) && 
+          ` (${filteredActionPlans.length} de ${centerActionPlans?.length || 0})`
+        }
+      </CardTitle>
+    </CardHeader>
+    <CardContent>
+      {actionPlansLoading ? (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Cargando planes de acción...</p>
+        </div>
+      ) : filteredActionPlans.length === 0 ? (
+        <div className="text-center py-8">
+          <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-medium mb-2">
+            {(actionPlanStatusFilter !== "all" || actionPlanSearchTerm) 
+              ? "No se encontraron planes de acción que coincidan con los filtros"
+              : "No hay planes de acción registrados"
+            }
+          </h3>
+          <p className="text-muted-foreground mb-4">
+            {(actionPlanStatusFilter !== "all" || actionPlanSearchTerm)
+              ? "Intenta ajustar los filtros para ver más resultados."
+              : "Los planes de acción de las incidencias de tu centro aparecerán aquí."
+            }
+          </p>
+          {(actionPlanStatusFilter !== "all" || actionPlanSearchTerm) && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionPlanSearchTerm("");
+                setActionPlanStatusFilter("all");
+              }}
+            >
+              Limpiar Filtros
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredActionPlans.map((plan: ActionPlan) => (
+            <div key={plan.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+              <div className="flex items-start justify-between">
+                {/* Información principal */}
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="font-medium text-lg">{plan.title}</h3>
+                    <Badge
+                      variant={getActionPlanStatusBadgeVariant(plan.status)}
+                      className={`text-xs ${getActionPlanStatusColor(plan.status)}`}
+                    >
+                      {getActionPlanStatusText(plan.status)}
+                    </Badge>
+                    
+                    {isOverdue(plan.dueDate, plan.status) && (
+                      <Badge variant="destructive" className="text-xs">
+                        Atrasado
+                      </Badge>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {pendingIncidents.map((incident: Incident) => (
-                      <div 
-                        key={incident.id}
-                        className="border border-orange-200 bg-orange-50 rounded-lg p-4 hover:bg-orange-100 transition-colors"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="font-medium text-primary">
-                                {incident.incidentNumber}
-                              </span>
-                              <div className={`w-3 h-3 rounded-full ${getPriorityColor(incident.priority)}`} />
-                              <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
-                                {getStatusText(incident.status)}
-                              </Badge>
-                              <Badge variant="secondary">
-                                {getPriorityText(incident.priority)}
-                              </Badge>
-                            </div>
-                            <h3 className="font-semibold mb-1">{incident.title}</h3>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              Reportado por: {incident.reporter?.firstName} {incident.reporter?.lastName || incident.reporter?.email}
-                            </p>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(incident.createdAt).toLocaleDateString('es-ES')}
-                            </div>
-                          </div>
-                          <Link href={`/incidents/${incident.id}`}>
-                            <Button variant="outline" size="sm">
-                              Asignar y Gestionar
-                            </Button>
-                          </Link>
-                        </div>
+
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {plan.description}
+                  </p>
+
+                  {/* Información de la incidencia relacionada */}
+                  {plan.incident && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800">
+                          Incidencia: {plan.incident.incidentNumber}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {plan.incident.priority}
+                        </Badge>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      <p className="text-sm text-blue-700">{plan.incident.title}</p>
+                    </div>
+                  )}
 
-          {/* Vista de incidencias críticas */}
-          <TabsContent value="critical" className="space-y-4">
+                  {/* Progreso y estadísticas */}
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all" 
+                          style={{ width: `${plan.progress}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-muted-foreground">{plan.progress}%</span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <CheckSquare className="h-3 w-3" />
+                        {plan._count.completedTasks}/{plan._count.tasks} tareas
+                      </span>
+                      
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        Vence: {new Date(plan.dueDate).toLocaleDateString('es-ES')}
+                      </span>
+
+                      {plan._count.comments > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {plan._count.comments} comentarios
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Responsable y participantes */}
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    {plan.assignee && (
+                      <span className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        Responsable: {plan.assignee.firstName} {plan.assignee.lastName}
+                      </span>
+                    )}
+
+                    {plan.participants.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        {plan.participants.length} participante(s)
+                      </span>
+                    )}
+
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Creado: {new Date(plan.createdAt).toLocaleDateString('es-ES')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex items-center gap-2 ml-4">
+                  <Link href={`/action-plans/${plan.id}`}>
+                    <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                      <Eye className="h-4 w-4" />
+                      Ver
+                    </Button>
+                  </Link>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/action-plans/${plan.id}`} className="flex items-center gap-2">
+                          <Eye className="h-4 w-4" />
+                          Ver Detalles
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/incidents/${plan.incident?.id}`} className="flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Ver Incidencia
+                        </Link>
+                      </DropdownMenuItem>
+                      {plan.assignee && (
+                        <DropdownMenuItem asChild>
+                          <Link href={`/action-plans/${plan.id}/edit`} className="flex items-center gap-2">
+                            <Edit className="h-4 w-4" />
+                            Editar Plan
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardContent>
+  </Card>
+
+  {/* Resumen de filtros aplicados para planes de acción */}
+  {(actionPlanSearchTerm || actionPlanStatusFilter !== "all") && (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Filter className="h-4 w-4" />
+          <span>Filtros aplicados:</span>
+          {actionPlanSearchTerm && (
+            <Badge variant="outline" className="text-xs">
+              Búsqueda: "{actionPlanSearchTerm}"
+            </Badge>
+          )}
+          {actionPlanStatusFilter !== "all" && (
+            <Badge variant="outline" className="text-xs">
+              Estado: {getActionPlanStatusText(actionPlanStatusFilter)}
+            </Badge>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )}
+</TabsContent>
+
+          {/* Tab: Rendimiento */}
+          <TabsContent value="performance" className="space-y-6">
+            {/* KPIs principales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Eficiencia Global</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">
+                    {Math.round((performanceMetrics.completionRate + performanceMetrics.taskCompletionRate) / 2)}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">Promedio de completitud</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Tiempo de Resolución</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {performanceMetrics.avgResolutionTime} días
+                  </div>
+                  <p className="text-xs text-muted-foreground">Promedio para resolver</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Tiempo de Respuesta</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600">
+                    {performanceMetrics.avgResponseTime} días
+                  </div>
+                  <p className="text-xs text-muted-foreground">Promedio para asignar</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Tasa de Finalización</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {performanceMetrics.completionRate}%
+                  </div>
+                  <p className="text-xs text-muted-foreground">Incidencias completadas</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Gráfico de tendencias de productividad */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-600">
-                  <AlertCircle className="h-5 w-5" />
-                  Incidencias Críticas Activas
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Tendencias de Productividad
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {criticalIncidents.length === 0 ? (
-                  <div className="text-center py-8">
-                    <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium mb-2">Sin incidencias críticas</h3>
-                    <p className="text-muted-foreground">No hay incidencias críticas activas en este centro</p>
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={trendData}>
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="resolved" 
+                      stroke="#22c55e" 
+                      strokeWidth={3}
+                      name="Incidencias Resueltas"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="actionPlans" 
+                      stroke="#8b5cf6" 
+                      strokeWidth={3}
+                      name="Planes Completados"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="tasksCompleted" 
+                      stroke="#3b82f6" 
+                      strokeWidth={3}
+                      name="Tareas Completadas"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Alertas y recomendaciones */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5" />
+                  Alertas y Recomendaciones
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {criticalIncidents.length > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                    <div>
+                      <p className="font-medium text-red-800">
+                        {criticalIncidents.length} incidencia(s) crítica(s) requieren atención inmediata
+                      </p>
+                      <p className="text-sm text-red-600">
+                        Revisa y asigna recursos para resolver estas incidencias prioritarias.
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {criticalIncidents.map((incident: Incident) => (
-                      <div 
-                        key={incident.id}
-                        className="border border-red-200 bg-red-50 rounded-lg p-4 hover:bg-red-100 transition-colors"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="font-medium text-primary">
-                                {incident.incidentNumber}
-                              </span>
-                              <div className="w-3 h-3 rounded-full bg-red-500" />
-                              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">
-                                {getStatusText(incident.status)}
-                              </Badge>
-                              <Badge className="bg-red-500 text-white">
-                                CRÍTICA
-                              </Badge>
-                            </div>
-                            <h3 className="font-semibold mb-1">{incident.title}</h3>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              Reportado por: {incident.reporter?.firstName} {incident.reporter?.lastName || incident.reporter?.email}
-                            </p>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(incident.createdAt).toLocaleDateString('es-ES')}
-                            </div>
-                          </div>
-                          <Link href={`/incidents/${incident.id}`}>
-                            <Button variant="destructive" size="sm">
-                              Atender Urgente
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
+                )}
+
+                {(centerStats?.actionPlans?.overdue || 0) > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <Clock className="h-5 w-5 text-orange-600" />
+                    <div>
+                      <p className="font-medium text-orange-800">
+                        {centerStats?.actionPlans?.overdue} plan(es) de acción atrasado(s)
+                      </p>
+                      <p className="text-sm text-orange-600">
+                        Contacta a los responsables para acelerar la implementación.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {performanceMetrics.completionRate >= 90 && (
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="font-medium text-green-800">
+                        ¡Excelente rendimiento!
+                      </p>
+                      <p className="text-sm text-green-600">
+                        Tu centro mantiene una alta tasa de resolución. Continúa con las buenas prácticas.
+                      </p>
+                    </div>
                   </div>
                 )}
               </CardContent>

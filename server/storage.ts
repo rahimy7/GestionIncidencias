@@ -575,8 +575,296 @@ async getDashboardStats(userId?: string) {
   };
 }
 
+async getCenterStatsDetailed(centerId: string, userId: string) {
+  try {
+    // Estadísticas básicas de incidencias
+    const [incidentStats] = await db
+      .select({
+        total: count(),
+        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
+        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
+        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
+        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
+        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
+        avgResolutionDays: avg(sql`CASE WHEN status = 'completed' AND actual_resolution_date IS NOT NULL 
+          THEN EXTRACT(day FROM actual_resolution_date - created_at) END`),
+        avgResponseDays: avg(sql`CASE WHEN assignee_id IS NOT NULL AND created_at IS NOT NULL 
+          THEN EXTRACT(day FROM updated_at - created_at) END`)
+      })
+      .from(incidents)
+      .where(eq(incidents.centerId, centerId));
 
+    // Estadísticas de planes de acción
+    const [actionPlanStats] = await db
+      .select({
+        total: count(),
+        pending: count(sql`CASE WHEN action_plans.status = 'pending' THEN 1 END`),
+        inProgress: count(sql`CASE WHEN action_plans.status = 'in_progress' THEN 1 END`),
+        completed: count(sql`CASE WHEN action_plans.status = 'completed' THEN 1 END`),
+        overdue: count(sql`CASE WHEN action_plans.status != 'completed' AND action_plans.due_date < NOW() THEN 1 END`)
+      })
+      .from(actionPlans)
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .where(eq(incidents.centerId, centerId));
 
+    // Estadísticas de tareas de planes de acción
+    const [taskStats] = await db
+      .select({
+        total: count(),
+        pending: count(sql`CASE WHEN action_plan_tasks.status = 'pending' THEN 1 END`),
+        inProgress: count(sql`CASE WHEN action_plan_tasks.status = 'in_progress' THEN 1 END`),
+        completed: count(sql`CASE WHEN action_plan_tasks.status = 'completed' THEN 1 END`),
+        overdue: count(sql`CASE WHEN action_plan_tasks.status != 'completed' AND action_plan_tasks.due_date < NOW() THEN 1 END`)
+      })
+      .from(actionPlanTasks)
+      .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .where(eq(incidents.centerId, centerId));
+
+    // Tendencias de los últimos 6 meses
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const trendData = await db
+      .select({
+        month: sql<string>`TO_CHAR(incidents.created_at, 'Mon')`,
+        monthNum: sql<number>`EXTRACT(month FROM incidents.created_at)`,
+        year: sql<number>`EXTRACT(year FROM incidents.created_at)`,
+        incidents: count(),
+        resolved: count(sql`CASE WHEN incidents.status = 'completed' THEN 1 END`)
+      })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.centerId, centerId),
+          sql`incidents.created_at >= ${sixMonthsAgo}`
+        )
+      )
+      .groupBy(
+        sql`EXTRACT(year FROM incidents.created_at)`,
+        sql`EXTRACT(month FROM incidents.created_at)`,
+        sql`TO_CHAR(incidents.created_at, 'Mon')`
+      )
+      .orderBy(
+        sql`EXTRACT(year FROM incidents.created_at)`,
+        sql`EXTRACT(month FROM incidents.created_at)`
+      );
+
+    // Obtener datos de planes de acción completados por mes
+    const actionPlanTrends = await db
+      .select({
+        month: sql<string>`TO_CHAR(action_plans.completed_at, 'Mon')`,
+        monthNum: sql<number>`EXTRACT(month FROM action_plans.completed_at)`,
+        year: sql<number>`EXTRACT(year FROM action_plans.completed_at)`,
+        actionPlans: count()
+      })
+      .from(actionPlans)
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .where(
+        and(
+          eq(incidents.centerId, centerId),
+          eq(actionPlans.status, 'completed'),
+          sql`action_plans.completed_at >= ${sixMonthsAgo}`
+        )
+      )
+      .groupBy(
+        sql`EXTRACT(year FROM action_plans.completed_at)`,
+        sql`EXTRACT(month FROM action_plans.completed_at)`,
+        sql`TO_CHAR(action_plans.completed_at, 'Mon')`
+      )
+      .orderBy(
+        sql`EXTRACT(year FROM action_plans.completed_at)`,
+        sql`EXTRACT(month FROM action_plans.completed_at)`
+      );
+
+    // Obtener datos de tareas completadas por mes
+    const taskTrends = await db
+      .select({
+        month: sql<string>`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`,
+        monthNum: sql<number>`EXTRACT(month FROM action_plan_tasks.completed_at)`,
+        year: sql<number>`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+        tasksCompleted: count()
+      })
+      .from(actionPlanTasks)
+      .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .where(
+        and(
+          eq(incidents.centerId, centerId),
+          eq(actionPlanTasks.status, 'completed'),
+          sql`action_plan_tasks.completed_at >= ${sixMonthsAgo}`
+        )
+      )
+      .groupBy(
+        sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+        sql`EXTRACT(month FROM action_plan_tasks.completed_at)`,
+        sql`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`
+      )
+      .orderBy(
+        sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+        sql`EXTRACT(month FROM action_plan_tasks.completed_at)`
+      );
+
+    // Combinar datos de tendencias
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const trends = [];
+    
+    for (let i = 0; i < 6; i++) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthName = months[date.getMonth()];
+      const monthNum = date.getMonth() + 1;
+      const year = date.getFullYear();
+
+      const incidentData = trendData.find(t => t.monthNum === monthNum && t.year === year);
+      const actionPlanData = actionPlanTrends.find(t => t.monthNum === monthNum && t.year === year);
+      const taskData = taskTrends.find(t => t.monthNum === monthNum && t.year === year);
+
+      trends.unshift({
+        month: monthName,
+        incidents: incidentData?.incidents || 0,
+        resolved: incidentData?.resolved || 0,
+        actionPlans: actionPlanData?.actionPlans || 0,
+        tasksCompleted: taskData?.tasksCompleted || 0
+      });
+    }
+
+    // Calcular métricas de rendimiento
+    const completionRate = incidentStats.total > 0 
+      ? Math.round((incidentStats.completed / incidentStats.total) * 100) 
+      : 0;
+
+    const taskCompletionRate = taskStats.total > 0 
+      ? Math.round((taskStats.completed / taskStats.total) * 100) 
+      : 0;
+
+    return {
+      totalIncidents: incidentStats.total,
+      inProgress: incidentStats.inProgress,
+      critical: incidentStats.critical,
+      completed: incidentStats.completed,
+      reported: incidentStats.reported,
+      assigned: incidentStats.assigned,
+      resolutionRate: completionRate,
+      actionPlans: {
+        total: actionPlanStats.total,
+        pending: actionPlanStats.pending,
+        inProgress: actionPlanStats.inProgress,
+        completed: actionPlanStats.completed,
+        overdue: actionPlanStats.overdue
+      },
+      tasks: {
+        total: taskStats.total,
+        pending: taskStats.pending,
+        inProgress: taskStats.inProgress,
+        completed: taskStats.completed,
+        overdue: taskStats.overdue
+      },
+      trends,
+      performanceMetrics: {
+        avgResolutionTime: Math.round((Number(incidentStats.avgResolutionDays) || 0) * 10) / 10,
+        avgResponseTime: Math.round((Number(incidentStats.avgResponseDays) || 0) * 10) / 10,
+        completionRate,
+        taskCompletionRate
+      }
+    };
+
+  } catch (error) {
+    console.error('Error getting detailed center stats:', error);
+    throw error;
+  }
+}
+
+async getActionPlansByCenter(centerId: string) {
+  try {
+    const result = await db
+      .select({
+        actionPlan: actionPlans,
+        assignee: users,
+        incident: incidents,
+        center: centers,
+        incidentType: incidentTypes
+      })
+      .from(actionPlans)
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
+      .where(eq(incidents.centerId, centerId))
+      .orderBy(desc(actionPlans.createdAt));
+
+    // Procesar cada plan para incluir estadísticas y participantes
+    const plansWithDetails = [];
+    for (const row of result) {
+      // Obtener participantes del plan
+      const participants = await db
+        .select()
+        .from(actionPlanParticipants)
+        .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
+        .where(eq(actionPlanParticipants.actionPlanId, row.actionPlan.id));
+
+      // Obtener estadísticas de tareas
+      const allTasks = await db
+        .select()
+        .from(actionPlanTasks)
+        .where(eq(actionPlanTasks.actionPlanId, row.actionPlan.id));
+
+      const completedTasks = allTasks.filter(t => t.status === 'completed');
+      
+      // Obtener número de comentarios
+      const comments = await db
+        .select()
+        .from(actionPlanComments)
+        .where(eq(actionPlanComments.actionPlanId, row.actionPlan.id));
+
+      // Calcular progreso
+      const progress = allTasks.length > 0 
+        ? Math.round((completedTasks.length / allTasks.length) * 100) 
+        : 0;
+
+      plansWithDetails.push({
+        id: row.actionPlan.id,
+        title: row.actionPlan.title,
+        description: row.actionPlan.description,
+        status: row.actionPlan.status,
+        dueDate: row.actionPlan.dueDate,
+        createdAt: row.actionPlan.createdAt,
+        completedAt: row.actionPlan.completedAt,
+        assignee: row.assignee ? {
+          id: row.assignee.id,
+          firstName: row.assignee.firstName,
+          lastName: row.assignee.lastName,
+          email: row.assignee.email,
+        } : null,
+        incident: row.incident ? {
+          id: row.incident.id,
+          incidentNumber: row.incident.incidentNumber,
+          title: row.incident.title,
+          status: row.incident.status,
+          priority: row.incident.priority,
+          type: row.incidentType,
+        } : null,
+        participants: participants.map(p => ({
+          id: p.action_plan_participants.id,
+          userId: p.action_plan_participants.userId,
+          role: p.action_plan_participants.role,
+          user: p.users,
+        })),
+        _count: {
+          tasks: allTasks.length,
+          completedTasks: completedTasks.length,
+          comments: comments.length,
+        },
+        progress,
+      });
+    }
+
+    return plansWithDetails;
+  } catch (error) {
+    console.error('Error getting action plans by center:', error);
+    throw error;
+  }
+}
   // New methods for role-based dashboards
 
 

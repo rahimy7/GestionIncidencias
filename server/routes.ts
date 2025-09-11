@@ -205,6 +205,67 @@ app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
   }
 });
 
+app.get('/api/dashboard/center-stats-detailed', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Verificar que el usuario es manager y tiene centro asignado
+    if (user.role !== 'manager' && user.role !== 'supervisor') {
+      return res.status(403).json({ message: 'Access denied. Manager role required.' });
+    }
+    
+    if (!user.centerId) {
+      return res.status(404).json({ message: 'User is not assigned to a center' });
+    }
+
+    const detailedStats = await storage.getCenterStatsDetailed(user.centerId, userId);
+    res.json(detailedStats);
+  } catch (error) {
+    console.error("Error fetching detailed center stats:", error);
+    res.status(500).json({ message: "Failed to fetch detailed center stats" });
+  }
+});
+
+app.get('/api/action-plans/center/:centerId?', isAuthenticated, async (req: any, res) => {
+  try {
+    let centerId = req.params.centerId;
+    const userId = req.user.id;
+    const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    // Si no se proporciona centerId, obtener el centro del usuario (para managers)
+    if (!centerId) {
+      if (!user.centerId) {
+        return res.status(404).json({ message: "User is not assigned to a center" });
+      }
+      centerId = user.centerId;
+    }
+    
+    // Verificar permisos - solo managers del centro o admins
+    if (user.role !== 'admin' && user.role !== 'manager') {
+      return res.status(403).json({ message: 'Access denied. Manager role required.' });
+    }
+    
+    if (user.role === 'manager' && user.centerId !== centerId) {
+      return res.status(403).json({ message: 'Access denied. Can only view action plans from your assigned center.' });
+    }
+
+    const actionPlans = await storage.getActionPlansByCenter(centerId);
+    res.json(actionPlans);
+  } catch (error) {
+    console.error("Error fetching center action plans:", error);
+    res.status(500).json({ message: "Failed to fetch center action plans" });
+  }
+});
+
   // Center stats for manager dashboard
  app.get('/api/dashboard/center-stats/:centerId?', isAuthenticated, async (req: any, res) => {
   try {
