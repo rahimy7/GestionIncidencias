@@ -491,6 +491,38 @@ app.post("/api/incidents/:id/participants", isAuthenticated, async (req: any, re
     res.status(500).json({ message: "Failed to add participant" });
   }
 });
+app.get("/api/incidents/:id/participants", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validar que el ID sea un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({
+        error: 'Formato de ID inválido',
+        details: `El parámetro '${id}' no es un UUID válido`
+      });
+    }
+
+    // Verificar que la incidencia existe
+    const incident = await storage.getIncidentById(id);
+    if (!incident) {
+      return res.status(404).json({ 
+        message: "Incidencia no encontrada" 
+      });
+    }
+
+    // Obtener participantes usando el método de storage
+    const participants = await storage.getIncidentParticipants(id);
+    
+    res.json(participants);
+  } catch (error) {
+    console.error("Error fetching incident participants:", error);
+    res.status(500).json({ 
+      message: "Error al obtener participantes de la incidencia" 
+    });
+  }
+});
 
 app.delete("/api/incidents/:id/participants/:userId", isAuthenticated, async (req: any, res) => {
   try {
