@@ -107,7 +107,7 @@ app.use((req, res, next) => {
 
   server.listen(port, host, () => {
     log(`✅ Server running on http://${host}:${port}`);
-    log(`📊 Dashboard: http://localhost:${port}`);
+    log(`📊 Dashboard: http://172.22.11.5:${port}`);
   });
 
   // Graceful shutdown

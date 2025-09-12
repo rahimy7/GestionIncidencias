@@ -36,6 +36,7 @@ import {
   actionPlanTasks,
   commentAttachments,
   taskEvidence,
+  incidentComments,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, count, sql, avg, isNotNull } from "drizzle-orm";
@@ -2457,6 +2458,120 @@ async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
   }
 }
 
+async getIncidentComments(incidentId: string) {
+  return await db
+    .select({
+      id: incidentComments.id,
+      content: incidentComments.content,
+      createdAt: incidentComments.createdAt,
+      updatedAt: incidentComments.updatedAt,
+      author: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      },
+    })
+    .from(incidentComments)
+    .leftJoin(users, eq(incidentComments.authorId, users.id))
+    .where(eq(incidentComments.incidentId, incidentId))
+    .orderBy(asc(incidentComments.createdAt));
+}
+
+/**
+ * Crear un nuevo comentario para una incidencia
+ */
+async createIncidentComment(data: {
+  incidentId: string;
+  content: string;
+  authorId: string;
+}) {
+  const commentId = crypto.randomUUID();
+  
+  const [comment] = await db
+    .insert(incidentComments)
+    .values({
+      id: commentId,
+      incidentId: data.incidentId,
+      content: data.content,
+      authorId: data.authorId,
+    })
+    .returning();
+
+  // Obtener el comentario completo con datos del autor
+  const fullComment = await db
+    .select({
+      id: incidentComments.id,
+      content: incidentComments.content,
+      createdAt: incidentComments.createdAt,
+      updatedAt: incidentComments.updatedAt,
+      author: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      },
+    })
+    .from(incidentComments)
+    .innerJoin(users, eq(incidentComments.authorId, users.id))
+    .where(eq(incidentComments.id, commentId));
+
+  return fullComment[0];
+}
+
+
+/**
+ * Actualizar un comentario existente
+ */
+async updateIncidentComment(commentId: string, content: string) {
+  const [updatedComment] = await db
+    .update(incidentComments)
+    .set({ 
+      content,
+      updatedAt: new Date(),
+    })
+    .where(eq(incidentComments.id, commentId))
+    .returning();
+
+  return updatedComment;
+}
+
+/**
+ * Eliminar un comentario
+ */
+async deleteIncidentComment(commentId: string) {
+  await db
+    .delete(incidentComments)
+    .where(eq(incidentComments.id, commentId));
+}
+
+/**
+ * Verificar si un usuario puede acceder a los comentarios de una incidencia
+ */
+
+async userCanAccessIncidentComments(incidentId: string, userId: string): Promise<boolean> {
+  // Usar la lógica existente de acceso a incidencias
+  const incident = await this.getIncidentById(incidentId);
+  if (!incident) return false;
+
+  const user = await this.getUser(userId);
+  if (!user) return false;
+
+  // Admin tiene acceso total
+  if (user.role === 'admin') return true;
+
+  // El reporter, assignee tiene acceso
+  if (incident.reporterId === userId || incident.assigneeId === userId) {
+    return true;
+  }
+
+  // Manager tiene acceso si es manager del centro
+  if (user.role === 'manager' && incident.centerId) {
+    return await this.isManagerOfCenter(userId, incident.centerId);
+  }
+
+  return false;
+}
 
 // 2. Función helper para registrar en historial (storage.ts)
 async logIncidentAction(

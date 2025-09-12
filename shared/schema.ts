@@ -252,14 +252,29 @@ export const commentAttachments = pgTable('comment_attachments', {
   uploadedBy: text('uploaded_by').notNull().references(() => users.id),
 });
 
-// Actualizar tabla de action_plans para incluir progreso
-// Agregar esta columna a la tabla existente mediante migración:
-/*
-ALTER TABLE action_plans 
-ADD COLUMN progress INTEGER DEFAULT 0,
-ADD COLUMN completed_at TIMESTAMP,
-ADD COLUMN completed_by TEXT REFERENCES users(id);
-*/
+
+export const incidentComments = pgTable("incident_comments", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: "cascade" }).notNull(),
+  content: text("content").notNull(),
+  authorId: varchar("author_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Relaciones para la tabla de comentarios
+export const incidentCommentsRelations = relations(incidentComments, ({ one }) => ({
+  incident: one(incidents, {
+    fields: [incidentComments.incidentId],
+    references: [incidents.id],
+  }),
+  author: one(users, {
+    fields: [incidentComments.authorId],
+    references: [users.id],
+  }),
+}));
+
+
 
 // Actualizar las relaciones existentes
 export const actionPlanTasksRelations = relations(actionPlanTasks, ({ one, many }) => ({
@@ -335,6 +350,36 @@ export const actionPlansRelationsUpdated = relations(actionPlans, ({ one, many }
   comments: many(actionPlanComments),
 }));
 
+export const incidentsRelationsUpdated = relations(incidents, ({ one, many }) => ({
+  reporter: one(users, {
+    fields: [incidents.reporterId],
+    references: [users.id],
+    relationName: "reporter",
+  }),
+  assignee: one(users, {
+    fields: [incidents.assigneeId],
+    references: [users.id],
+    relationName: "assignee",
+  }),
+  supervisor: one(users, {
+    fields: [incidents.supervisorId],
+    references: [users.id],
+    relationName: "supervisor",
+  }),
+  center: one(centers, {
+    fields: [incidents.centerId],
+    references: [centers.id],
+  }),
+  type: one(incidentTypes, {
+    fields: [incidents.typeId],
+    references: [incidentTypes.id],
+  }),
+  participants: many(incidentParticipants),
+  actionPlans: many(actionPlans),
+  history: many(incidentHistory),
+  comments: many(incidentComments), // Nueva relación
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   reportedIncidents: many(incidents, { relationName: "reporter" }),
@@ -397,7 +442,9 @@ export const incidentsRelations = relations(incidents, ({ one, many }) => ({
   participants: many(incidentParticipants),
   actionPlans: many(actionPlans),
   history: many(incidentHistory),
+  comments: many(incidentComments), // Nueva relación
 }));
+
 
 export const incidentParticipantsRelations = relations(incidentParticipants, ({ one }) => ({
   incident: one(incidents, {
