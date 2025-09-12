@@ -1714,7 +1714,7 @@ app.patch('/api/action-plans/:id/tasks/:taskId',
     }
   }
 );
-// POST /api/action-plans/:id/comments - Agregar comentario a plan de acción
+
 app.post('/api/action-plans/:id/comments', 
   isAuthenticated,
   upload.array('attachments', 5), // Máximo 5 archivos
@@ -1821,7 +1821,7 @@ app.get('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) =>
   }
 });
 
-// GET /api/action-plans/:id/comments - Obtener comentarios de un plan específico
+
 app.get('/api/action-plans/:id/comments', isAuthenticated, async (req: any, res) => {
   try {
     const { id } = req.params;
@@ -1888,7 +1888,162 @@ app.get('/api/dashboard/trends', isAuthenticated, async (req: any, res) => {
   }
 });
 
+// GET /api/incidents/:id/comments - Obtener comentarios de una incidencia
+app.get('/api/incidents/:id/comments', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    // Verificar acceso a la incidencia
+    const hasAccess = await storage.userCanAccessIncidentComments(id, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso a los comentarios de esta incidencia' });
+    }
+    
+    const comments = await storage.getIncidentComments(id);
+    res.json(comments);
+  } catch (error) {
+    console.error('Error fetching incident comments:', error);
+    res.status(500).json({ error: 'Error al obtener comentarios' });
+  }
+});
 
+// POST /api/incidents/:id/comments - Crear nuevo comentario
+
+app.post('/api/incidents/:id/comments', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { text, content } = req.body;
+    
+    // Validar contenido
+    const commentContent = text || content;
+    if (!commentContent || commentContent.trim() === '') {
+      return res.status(400).json({ error: 'El contenido del comentario es requerido' });
+    }
+    
+    // Verificar acceso a la incidencia
+    const hasAccess = await storage.userCanAccessIncidentComments(id, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso para comentar en esta incidencia' });
+    }
+    
+    // Crear comentario
+    const comment = await storage.createIncidentComment({
+      incidentId: id,
+      content: commentContent.trim(),
+      authorId: userId,
+    });
+    
+    // Registrar en el historial de la incidencia
+    await storage.addIncidentHistory({
+      incidentId: id,
+      userId: userId,
+      action: "comment_added",
+      description: "Nuevo comentario agregado",
+      metadata: { commentId: comment.id },
+    });
+    
+    res.status(201).json(comment);
+  } catch (error) {
+    console.error('Error creating incident comment:', error);
+    res.status(500).json({ error: 'Error al crear comentario' });
+  }
+});
+// PUT /api/incidents/:incidentId/comments/:commentId - Actualizar comentario
+app.put('/api/incidents/:incidentId/comments/:commentId', isAuthenticated, async (req: any, res) => {
+  try {
+    const { incidentId, commentId } = req.params;
+    const userId = req.user.id;
+    const { text, content } = req.body;
+    
+    // Validar contenido
+    const commentContent = text || content;
+    if (!commentContent || commentContent.trim() === '') {
+      return res.status(400).json({ error: 'El contenido del comentario es requerido' });
+    }
+    
+    // Verificar acceso a la incidencia
+    const hasAccess = await storage.userCanAccessIncidentComments(incidentId, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso para editar comentarios de esta incidencia' });
+    }
+    
+    // Verificar que el usuario sea el autor del comentario o admin
+    const comments = await storage.getIncidentComments(incidentId);
+    const comment = comments.find(c => c.id === commentId);
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comentario no encontrado' });
+    }
+    
+    const user = await storage.getUser(userId);
+    if (comment.author.id !== userId && user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo puedes editar tus propios comentarios' });
+    }
+    
+    // Actualizar comentario
+    const updatedComment = await storage.updateIncidentComment(commentId, commentContent.trim());
+    
+    // Registrar en el historial
+    await storage.addIncidentHistory({
+      incidentId: incidentId,
+      userId: userId,
+      action: "comment_updated",
+      description: "Comentario actualizado",
+      metadata: { commentId: commentId },
+    });
+    
+    res.json(updatedComment);
+  } catch (error) {
+    console.error('Error updating incident comment:', error);
+    res.status(500).json({ error: 'Error al actualizar comentario' });
+  }
+});
+
+// DELETE /api/incidents/:incidentId/comments/:commentId - Eliminar comentario
+app.delete('/api/incidents/:incidentId/comments/:commentId', isAuthenticated, async (req: any, res) => {
+  try {
+    const { incidentId, commentId } = req.params;
+    const userId = req.user.id;
+    
+    // Verificar acceso a la incidencia
+    const hasAccess = await storage.userCanAccessIncidentComments(incidentId, userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Sin acceso para eliminar comentarios de esta incidencia' });
+    }
+    
+    // Verificar que el usuario sea el autor del comentario o admin
+    const comments = await storage.getIncidentComments(incidentId);
+    const comment = comments.find(c => c.id === commentId);
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comentario no encontrado' });
+    }
+    
+    const user = await storage.getUser(userId);
+    if (!comment.author || (comment.author.id !== userId && user?.role !== 'admin')) {
+      return res.status(403).json({ error: 'Solo puedes eliminar tus propios comentarios' });
+    }
+    
+    // Eliminar comentario
+    await storage.deleteIncidentComment(commentId);
+    
+    // Registrar en el historial
+    await storage.addIncidentHistory({
+      incidentId: incidentId,
+      userId: userId,
+      action: "comment_deleted",
+      description: "Comentario eliminado",
+      metadata: { commentId: commentId },
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting incident comment:', error);
+    res.status(500).json({ error: 'Error al eliminar comentario' });
+  }
+});
 
 
 
