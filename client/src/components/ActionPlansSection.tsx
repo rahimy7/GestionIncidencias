@@ -28,6 +28,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ActionPlanDetail } from "./ActionPlanDetail";
 import { ActionPlanCard } from "./ActionPlanCard";
 import { ParticipantSelector } from "./ParticipantSelector";
+import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 interface ActionPlan {
   id: string;
@@ -394,6 +396,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
   const [selectedActionPlanId, setSelectedActionPlanId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const queryClient = useQueryClient();
   const [newPlan, setNewPlan] = useState({
     title: '',
     description: '',
@@ -507,6 +510,29 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
     }
   };
 
+  const { data: freshParticipants, refetch: refetchParticipants } = useQuery({
+  queryKey: [`/api/incidents/${incident.id}/participants`],
+  queryFn: async () => {
+    const response = await apiRequest(`/api/incidents/${incident.id}/participants`, {});
+    return response.json();
+  },
+  enabled: showNewPlanForm, // Solo ejecutar cuando el modal está abierto
+});
+
+// Efecto para refrescar participantes cuando se abre el modal
+useEffect(() => {
+  if (showNewPlanForm) {
+    // Refrescar los datos de participantes cuando se abre el modal
+    refetchParticipants();
+    // También invalidar queries relacionadas para forzar actualización
+    queryClient.invalidateQueries({ 
+      queryKey: [`/api/incidents/${incident.id}/participants`] 
+    });
+  }
+}, [showNewPlanForm, refetchParticipants, queryClient, incident.id]);
+
+// Usar los participantes frescos en lugar de incident.participants
+const availableParticipants = freshParticipants || incident.participants || [];
   const completedPlans = incident.actionPlans?.filter(p => p.status === 'completed').length || 0;
   const totalPlans = incident.actionPlans?.length || 0;
   const progressPercentage = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
@@ -674,18 +700,18 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
                   {/* Asignación de personas */}
                   <div className="space-y-4">
                     <ParticipantSelector
-                      participants={incident.participants || []}
-                      selectedUserId={newPlan.assigneeId}
-                      onSelectUser={(userId) => setNewPlan({...newPlan, assigneeId: userId})}
-                      label="Responsable del plan"
-                      placeholder="Seleccionar responsable"
-                    />
+  participants={availableParticipants}
+  selectedUserId={newPlan.assigneeId}
+  onSelectUser={(userId) => setNewPlan({...newPlan, assigneeId: userId})}
+  label="Responsable del plan"
+  placeholder="Seleccionar responsable"
+/>
 
-                    <PlanParticipantsManager
-                      selectedParticipants={newPlan.participants}
-                      onParticipantsChange={(participants) => setNewPlan({...newPlan, participants})}
-                      availableParticipants={incident.participants || []}
-                    />
+<PlanParticipantsManager
+  selectedParticipants={newPlan.participants}
+  onParticipantsChange={(participants: string[]) => setNewPlan({...newPlan, participants})}
+  availableParticipants={availableParticipants}
+/>
                   </div>
                 </div>
                 

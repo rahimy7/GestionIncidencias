@@ -385,10 +385,32 @@ app.get("/api/incidents", isAuthenticated, async (req: any, res) => {
 });
 
 // ESPECÍFICO PRIMERO - antes que /:id
+// En server/routes.ts - Reemplazar el endpoint existente
+
 app.get("/api/incidents/assigned", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.id;
-    const incidents = await storage.getIncidentsByAssignee(userId);
+    const user = await storage.getUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    let incidents;
+    
+    if (user.role === 'manager' || user.role === 'supervisor') {
+      // Para managers: usar el endpoint existente con filtro de centro
+      // Esto devuelve todas las incidencias de su centro
+      const filters: any = {};
+      if (user.centerId) {
+        filters.centerId = user.centerId;
+      }
+      incidents = await storage.getIncidentsWithAdvancedFilters(filters, 100, 0);
+    } else {
+      // Para usuarios normales: solo las que les fueron asignadas específicamente
+      incidents = await storage.getIncidentsByAssignee(userId);
+    }
+    
     res.json(incidents);
   } catch (error) {
     console.error("Error fetching assigned incidents:", error);

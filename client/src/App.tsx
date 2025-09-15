@@ -58,8 +58,8 @@ function Router() {
     case 'admin':
       return () => <AdminDashboard />;
     case 'manager':
-    case 'supervisor':
       return () => <ManagerDashboard />;
+       case 'supervisor':
     case 'user':
     default:
       return () => <UserDashboard />;
