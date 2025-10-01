@@ -1,4 +1,4 @@
-// client/src/components/IncidentDetail.tsx - VERSIÓN CORREGIDA
+// client/src/components/IncidentDetail.tsx - VERSIÓN CON EVIDENCEVIEWER
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { EvidenceViewer } from "@/components/EvidenceViewer"; // NUEVO IMPORT
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { 
@@ -27,7 +28,6 @@ import { ParticipantSelector } from "@/components/ParticipantSelector";
 import { ActionPlansSection } from "./ActionPlansSection";
 import { MessageSquare, Send, Edit3, Trash2, Save } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-
 
 interface IncidentDetailProps {
   incident: IncidentWithDetails;
@@ -62,9 +62,6 @@ const priorityColors = {
   high: "bg-orange-100 text-orange-800",
   critical: "bg-red-100 text-red-800",
 };
-
-
-
 
 export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
   const [activeTab, setActiveTab] = useState("details");
@@ -188,7 +185,6 @@ const createActionPlanMutation = useMutation({
     });
   },
 });
-
 
   // CORREGIDO: handleGetUploadParameters
   const handleGetUploadParameters = async () => {
@@ -593,26 +589,17 @@ const handleRemoveParticipant = async (userId: string) => {
                 </Card>
               </div>
 
-              {/* Evidence */}
+              {/* Evidence - ACTUALIZADO CON EVIDENCEVIEWER */}
               <div>
                 <Card>
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
                     <div className="space-y-3">
-                      {incident.evidenceFiles?.map((file, index) => (
-                        <div key={index} className="relative group cursor-pointer">
-                          <img
-                            src={file}
-                            alt={`Evidence ${index + 1}`}
-                            className="w-full h-24 object-cover rounded-md border border-border"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-                            <Button variant="ghost" size="sm" className="text-white">
-                              Ver
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                      {/* NUEVO: Usar EvidenceViewer en lugar del código anterior */}
+                      <EvidenceViewer 
+                        files={incident.evidenceFiles || []} 
+                        className="mb-4"
+                      />
                       
                       <ObjectUploader
                         maxNumberOfFiles={5}
@@ -866,33 +853,22 @@ const handleRemoveParticipant = async (userId: string) => {
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {incident.evidenceFiles?.map((file, index) => (
-                    <div key={index} className="relative group cursor-pointer">
-                      <img
-                        src={file}
-                        alt={`Evidence ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-md border border-border"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-                        <Button variant="ghost" size="sm" className="text-white">
-                          Ver Completa
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  <ObjectUploader
-                    maxNumberOfFiles={5}
-                    maxFileSize={10485760}
-                    onGetUploadParameters={handleGetUploadParameters}
-                    onComplete={handleUploadComplete}
-                    buttonClassName="w-full h-32 border border-dashed border-muted-foreground/25 rounded-md flex flex-col items-center justify-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                  >
-                    <Camera className="h-8 w-8 mb-2" />
-                    <span>Agregar Evidencia</span>
-                  </ObjectUploader>
-                </div>
+                {/* NUEVO: Usar EvidenceViewer también en la pestaña de evidencia */}
+                <EvidenceViewer 
+                  files={incident.evidenceFiles || []} 
+                  className="mb-4"
+                />
+                
+                <ObjectUploader
+                  maxNumberOfFiles={5}
+                  maxFileSize={10485760}
+                  onGetUploadParameters={handleGetUploadParameters}
+                  onComplete={handleUploadComplete}
+                  buttonClassName="w-full h-32 border border-dashed border-muted-foreground/25 rounded-md flex flex-col items-center justify-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
+                >
+                  <Camera className="h-8 w-8 mb-2" />
+                  <span>Agregar Evidencia</span>
+                </ObjectUploader>
               </CardContent>
             </Card>
           </TabsContent>

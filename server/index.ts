@@ -27,6 +27,18 @@ app.use(helmet({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
 // Cache static assets
 app.use((req, res, next) => {
   if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)) {
@@ -36,54 +48,7 @@ app.use((req, res, next) => {
 });
 
 // Add response compression and timing
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    
-    // Add caching headers for API responses
-    if (path.startsWith("/api") && req.method === 'GET') {
-      if (path.includes('/dashboard/') || path.includes('/centers')) {
-        res.setHeader('Cache-Control', 'private, max-age=300'); // 5 minutes
-      }
-    }
-    
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      
-      // Only log response body for errors or if very long response time
-      if (res.statusCode >= 400 || duration > 1000) {
-        if (capturedJsonResponse) {
-          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-        }
-      }
-
-      if (logLine.length > 100) {
-        logLine = logLine.slice(0, 99) + "…";
-      }
-
-      // Color code by performance
-      if (duration > 1000) {
-        log(`🔴 ${logLine}`); // Red for slow
-      } else if (duration > 500) {
-        log(`🟡 ${logLine}`); // Yellow for medium
-      } else {
-        log(`🟢 ${logLine}`); // Green for fast
-      }
-    }
-  });
-
-  next();
-});
 
 (async () => {
   const server = await registerRoutes(app);
