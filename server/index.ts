@@ -4,6 +4,7 @@ import compression from "compression";
 import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import os from 'os';
 
 
 const app = express();
@@ -67,14 +68,32 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  const port = parseInt(process.env.PORT || "3000", 10);
+    const port = parseInt(process.env.PORT || "3000", 10);
   const host = "0.0.0.0"; // Keep for deployment compatibility
 
   server.listen(port, host, () => {
-    log(`✅ Server running on http://${host}:${port}`);
-    log(`📊 Dashboard: http://172.22.11.5:${port}`);
-  });
+    // SOLUCIÓN 1: Obtener la IP local automáticamente
+    const getLocalIP = () => {
+      const interfaces = os.networkInterfaces();
+      for (const devName in interfaces) {
+        const iface = interfaces[devName];
+        if (!iface) continue;
+        
+        for (const alias of iface) {
+          if (alias.family === 'IPv4' && !alias.internal) {
+            return alias.address;
+          }
+        }
+      }
+      return 'localhost';
+    };
 
+    const localIP = getLocalIP();
+    
+    log(`✅ Server running on http://${host}:${port}`);
+    log(`📊 Dashboard: http://localhost:${port}`);
+    log(`🌐 Network: http://${localIP}:${port}`);
+  });
   // Graceful shutdown
   process.on('SIGTERM', () => {
     log('📤 SIGTERM received, shutting down gracefully');

@@ -18,8 +18,8 @@ import { useAuth } from "@/hooks/useAuth";
 
 // Schema que coincide exactamente con el backend insertIncidentSchema
 const incidentSchema = z.object({
-  title: z.string().min(5, "El título debe tener al menos 5 caracteres"),
-  description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
+  title: z.string().min(1, "El título debe tener al menos 5 caracteres"),
+  description: z.string(),
   priority: z.enum(["low", "medium", "high", "critical"], {
     required_error: "Debe seleccionar una prioridad",
   }),

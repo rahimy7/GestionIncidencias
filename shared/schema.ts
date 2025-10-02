@@ -126,7 +126,7 @@ export const incidents = pgTable("incidents", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   incidentNumber: varchar("incident_number").unique().notNull(),
   title: varchar("title", { length: 500 }).notNull(),
-  description: text("description").notNull(),
+  description: text("description"),
   status: incidentStatusEnum("status").default("reported").notNull(),
   priority: incidentPriorityEnum("priority").default("medium").notNull(),
   
