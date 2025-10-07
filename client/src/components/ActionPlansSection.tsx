@@ -35,10 +35,10 @@ interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
   assigneeId: string;
   dueDate: Date | string;
-  completedAt?: Date | string;
+  completedAt?: Date | null | string;
   assignee: {
     id: string;
     name: string;
@@ -65,10 +65,12 @@ interface ActionPlan {
 
 interface IncidentWithActionPlans {
   id: string;
-  status: string;
-  actionPlans?: ActionPlan[];
+  incidentNumber?: string;
+  title: string;
   participants?: Array<{
+    id: string;
     userId: string;
+    role?: 'participant' | 'reviewer' | 'supervisor';
     user: {
       id: string;
       firstName: string;
@@ -77,6 +79,33 @@ interface IncidentWithActionPlans {
       role: string;
       center?: { code: string; name: string; };
     };
+  }>;
+  actionPlans?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+    dueDate: string | Date;
+    completedAt?: string | Date | null;
+    assigneeId: string;
+    assignee: {
+      id: string | null;
+      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      email: string | null;  // ← CAMBIAR: permitir null
+    };
+    participants?: Array<{
+      id: string;
+      userId: string;
+      user: {
+        id: string;
+        name?: string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        email: string | null;  // ← CAMBIAR: permitir null
+      };
+    }>;
   }>;
 }
 
@@ -352,7 +381,7 @@ const getStatusColor = (status: string) => {
     case 'pending': return 'bg-gray-100 text-gray-800';
     case 'in_progress': return 'bg-blue-100 text-blue-800';
     case 'completed': return 'bg-green-100 text-green-800';
-    case 'cancelled': return 'bg-red-100 text-red-800';
+    case 'overdue': return 'bg-red-100 text-red-800';
     default: return 'bg-gray-100 text-gray-800';
   }
 };
@@ -362,7 +391,7 @@ const getStatusText = (status: string) => {
     case 'pending': return 'Pendiente';
     case 'in_progress': return 'En Progreso';
     case 'completed': return 'Completado';
-    case 'cancelled': return 'Vencido';
+    case 'overdue': return 'Vencido';
     default: return status;
   }
 };
@@ -545,7 +574,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
                       key={plan.id}
                       actionPlan={{
                         ...plan,
-                        status: isOverdue ? 'cancelled' : plan.status,
+                        status: isOverdue ? 'overdue' : plan.status,
                         dueDate: typeof plan.dueDate === 'string' ? plan.dueDate : plan.dueDate.toISOString(),
                         completedAt: plan.completedAt ? (typeof plan.completedAt === 'string' ? plan.completedAt : plan.completedAt.toISOString()) : null,
                         incident: {

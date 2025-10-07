@@ -341,6 +341,62 @@ async updateIncident(incidentId: string, updates: any, userId: string) {
   }
 }
 
+async deleteIncident(id: string): Promise<void> {
+  try {
+    console.log(`🗑️ Iniciando eliminación de incidencia: ${id}`);
+    
+    // Obtener información de la incidencia antes de eliminar (para logs)
+    const incident = await this.getIncidentById(id);
+    if (!incident) {
+      throw new Error(`Incidencia ${id} no encontrada`);
+    }
+    
+    console.log(`📋 Eliminando incidencia: ${incident.incidentNumber} - ${incident.title}`);
+    
+    // Contar datos relacionados antes de eliminar (para logs)
+    const [actionPlansCount, participantsCount, historyCount, commentsCount] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` })
+        .from(actionPlans)
+        .where(eq(actionPlans.incidentId, id))
+        .then(r => Number(r[0]?.count || 0)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(incidentParticipants)
+        .where(eq(incidentParticipants.incidentId, id))
+        .then(r => Number(r[0]?.count || 0)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(incidentHistory)
+        .where(eq(incidentHistory.incidentId, id))
+        .then(r => Number(r[0]?.count || 0)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(incidentComments)
+        .where(eq(incidentComments.incidentId, id))
+        .then(r => Number(r[0]?.count || 0))
+    ]);
+    
+    console.log(`📊 Datos a eliminar en cascada:
+      - ${actionPlansCount} planes de acción (con sus tareas, participantes y comentarios)
+      - ${participantsCount} participantes
+      - ${historyCount} entradas de historial
+      - ${commentsCount} comentarios`);
+    
+    // Eliminar la incidencia (el cascade eliminará todo lo relacionado)
+    const result = await db
+      .delete(incidents)
+      .where(eq(incidents.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error(`No se pudo eliminar la incidencia ${id}`);
+    }
+    
+    console.log(`✅ Incidencia ${incident.incidentNumber} eliminada exitosamente`);
+    
+  } catch (error) {
+    console.error(`❌ Error eliminando incidencia ${id}:`, error);
+    throw error;
+  }
+}
+
   // Action Plans operations
 
  async getActionPlansByIncident(incidentId: string): Promise<(ActionPlan & { 

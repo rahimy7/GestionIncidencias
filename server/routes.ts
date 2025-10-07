@@ -521,6 +521,73 @@ app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+app.delete("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    // Validar UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({ 
+        error: "Formato de ID inválido",
+        details: `El parámetro '${id}' no es un UUID válido`
+      });
+    }
+
+    // Verificar que la incidencia existe
+    const incident = await storage.getIncidentById(id);
+    if (!incident) {
+      return res.status(404).json({ 
+        message: "Incidencia no encontrada" 
+      });
+    }
+
+    // Verificar permisos - solo admins, managers, supervisors o el reportero pueden eliminar
+    const canDelete = 
+      userRole === 'admin' || 
+      userRole === 'manager' || 
+      userRole === 'supervisor' ||
+      incident.reporterId === userId;
+
+    if (!canDelete) {
+      return res.status(403).json({ 
+        message: "No tienes permisos para eliminar esta incidencia" 
+      });
+    }
+
+    // Registrar la eliminación en el historial antes de eliminar
+    await storage.addIncidentHistory({
+      incidentId: id,
+      userId: userId,
+      action: "deleted",
+      description: `Incidencia eliminada por ${req.user.firstName} ${req.user.lastName}`,
+      metadata: {
+        deletedBy: userId,
+        incidentNumber: incident.incidentNumber,
+        title: incident.title,
+        timestamp: new Date().toISOString()
+      },
+    });
+
+    // Eliminar la incidencia (esto eliminará en cascada todos los datos relacionados)
+    await storage.deleteIncident(id);
+
+    res.json({ 
+      message: "Incidencia eliminada exitosamente",
+      deletedIncidentNumber: incident.incidentNumber
+    });
+
+  } catch (error) {
+    console.error("Error deleting incident:", error);
+    res.status(500).json({ 
+      message: "Error al eliminar la incidencia",
+      error: error instanceof Error ? error.message : "Error desconocido"
+    });
+  }
+});
+
 // Endpoint para historial de incidencias
 app.get('/api/incidents/:id/history', isAuthenticated, async (req: any, res) => {
   try {
@@ -668,11 +735,11 @@ app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, re
     // Validar campos requeridos antes del schema
     const { title, description, assigneeId, dueDate } = req.body;
     
-    if (!title || !description || !assigneeId || !dueDate) {
+    if (!title || !assigneeId || !dueDate) {
       return res.status(400).json({ 
         message: "Missing required fields", 
         required: ["title", "description", "assigneeId", "dueDate"],
-        received: { title, description, assigneeId, dueDate }
+        received: { title, assigneeId, dueDate }
       });
     }
 
@@ -680,7 +747,7 @@ app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, re
     const data = {
       incidentId: id,
       title: title.trim(),
-      description: description.trim(),
+      description: description ? description.trim() : "",
       assigneeId: assigneeId,
       dueDate: new Date(dueDate),
       status: "pending", // Default status
@@ -2000,7 +2067,7 @@ app.put('/api/incidents/:incidentId/comments/:commentId', isAuthenticated, async
     }
     
     const user = await storage.getUser(userId);
-    if (comment.author.id !== userId && user?.role !== 'admin') {
+    if (!comment.author || (comment.author.id !== userId && user?.role !== 'admin')) {
       return res.status(403).json({ error: 'Solo puedes editar tus propios comentarios' });
     }
     

@@ -13,7 +13,7 @@ interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
   dueDate: string;
   completedAt?: string | null;
   assignee: {

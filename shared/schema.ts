@@ -521,7 +521,7 @@ export const insertIncidentParticipantSchema = createInsertSchema(incidentPartic
 export const insertActionPlanSchema = z.object({
   incidentId: z.string().uuid("ID de incidencia inválido"),
   title: z.string().min(1, "El título es requerido").max(500, "El título es muy largo"),
-  description: z.string().min(1, "La descripción es requerida"),
+  description: z.string().max(2000, "La descripción es muy larga").default(""),
   status: z.enum(["pending", "in_progress", "completed", "overdue"]).default("pending"),
   assigneeId: z.string().min(1, "El responsable es requerido"),
   departmentId: z.string().nullable().optional(),

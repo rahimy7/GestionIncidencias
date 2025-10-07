@@ -20,8 +20,12 @@ app.use(compression({
 }));
 
 // Security headers
+// Security headers
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable for Vite development
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false, // 🔥 DESACTIVAR COOP
+  crossOriginResourcePolicy: false,
 }));
 
 // Parse JSON with size limit
@@ -71,29 +75,37 @@ app.use((req, res, next) => {
     const port = parseInt(process.env.PORT || "3000", 10);
   const host = "0.0.0.0"; // Keep for deployment compatibility
 
-  server.listen(port, host, () => {
-    // SOLUCIÓN 1: Obtener la IP local automáticamente
-    const getLocalIP = () => {
-      const interfaces = os.networkInterfaces();
-      for (const devName in interfaces) {
-        const iface = interfaces[devName];
-        if (!iface) continue;
-        
-        for (const alias of iface) {
-          if (alias.family === 'IPv4' && !alias.internal) {
-            return alias.address;
-          }
+server.listen(port, host, () => {
+  const getNetworkIPs = () => {
+    const interfaces = os.networkInterfaces();
+    const ips: { name: string; address: string }[] = [];
+    
+    for (const devName in interfaces) {
+      const iface = interfaces[devName];
+      if (!iface) continue;
+      
+      for (const alias of iface) {
+        if (alias.family === 'IPv4' && !alias.internal) {
+          ips.push({ name: devName, address: alias.address });
         }
       }
-      return 'localhost';
-    };
-
-    const localIP = getLocalIP();
+    }
     
-    log(`✅ Server running on http://${host}:${port}`);
-    log(`📊 Dashboard: http://localhost:${port}`);
-    log(`🌐 Network: http://${localIP}:${port}`);
-  });
+    return ips;
+  };
+
+  const networkIPs = getNetworkIPs();
+  
+  log(`✅ Server running on port ${port}`);
+  log(`📊 Local: http://localhost:${port}`);
+  
+  if (networkIPs.length > 0) {
+    log(`🌐 Network interfaces:`);
+    networkIPs.forEach(({ name, address }) => {
+      log(`   - ${name}: http://${address}:${port}`);
+    });
+  }
+});
   // Graceful shutdown
   process.on('SIGTERM', () => {
     log('📤 SIGTERM received, shutting down gracefully');

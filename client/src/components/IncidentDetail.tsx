@@ -28,6 +28,8 @@ import { ParticipantSelector } from "@/components/ParticipantSelector";
 import { ActionPlansSection } from "./ActionPlansSection";
 import { MessageSquare, Send, Edit3, Trash2, Save } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { IncidentHistory } from "./IncidentHistory";
+import { DeleteIncidentDialog } from '@/components/DeleteIncidentDialog';
 
 interface IncidentDetailProps {
   incident: IncidentWithDetails;
@@ -77,6 +79,7 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
    const [newComment, setNewComment] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
 useEffect(() => {
   fetchCurrentUser();
@@ -108,30 +111,38 @@ const fetchCurrentUser = async () => {
   });
 
   // CORREGIDO: updateIncidentMutation
-  const updateIncidentMutation = useMutation({
-    mutationFn: async (updates: any) => {
-      const response = await apiRequest(`/api/incidents/${incident.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Éxito",
-        description: "Incidencia actualizada correctamente",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/incidents"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar la incidencia",
-        variant: "destructive",
-      });
-    },
-  });
+const updateIncidentMutation = useMutation({
+  mutationFn: async (updates: any) => {
+    const response = await apiRequest(`/api/incidents/${incident.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+    return response.json();
+  },
+  onSuccess: () => {
+    toast({
+      title: "Éxito",
+      description: "Incidencia actualizada correctamente",
+    });
+    
+    // Invalida TODAS las queries que empiezan con "incidents"
+    queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/incidents"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/incidents/assigned"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/incidents/my"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    
+    // Cerrar el modal después de actualizar
+    onClose();
+  },
+  onError: () => {
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar la incidencia",
+      variant: "destructive",
+    });
+  },
+});
   const refetchIncident = async () => {
   return queryClient.invalidateQueries({ 
     queryKey: [`/api/incidents/${incident.id}`] 
@@ -185,6 +196,20 @@ const createActionPlanMutation = useMutation({
     });
   },
 });
+
+const canDeleteIncident = () => {
+  if (!currentUser) return false;
+  
+  const userRole = currentUser.role;
+  const isReporter = currentUser.id === incident.reporterId;
+  
+  return (
+    userRole === 'admin' || 
+    userRole === 'manager' || 
+    userRole === 'supervisor' ||
+    isReporter
+  );
+};
 
   // CORREGIDO: handleGetUploadParameters
   const handleGetUploadParameters = async () => {
@@ -476,7 +501,8 @@ const handleRemoveParticipant = async (userId: string) => {
     return formatDate(dateString);
   };
 
- return (
+return (
+  <>
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto">
         <DialogHeader>
@@ -495,10 +521,29 @@ const handleRemoveParticipant = async (userId: string) => {
               <Badge className={priorityColors[incident.priority]}>
                 {incident.priority}
               </Badge>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
             </div>
+          </div>
+          
+          {/* Botones en la esquina superior derecha */}
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            {canDeleteIncident() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                title="Eliminar incidencia"
+              >
+                <Trash2 className="h-5 w-5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
         </DialogHeader>
 
@@ -589,13 +634,12 @@ const handleRemoveParticipant = async (userId: string) => {
                 </Card>
               </div>
 
-              {/* Evidence - ACTUALIZADO CON EVIDENCEVIEWER */}
+              {/* Evidence */}
               <div>
                 <Card>
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
                     <div className="space-y-3">
-                      {/* NUEVO: Usar EvidenceViewer en lugar del código anterior */}
                       <EvidenceViewer 
                         files={incident.evidenceFiles || []} 
                         className="mb-4"
@@ -644,7 +688,27 @@ const handleRemoveParticipant = async (userId: string) => {
 
           <TabsContent value="action-plans" className="space-y-4">
             <ActionPlansSection 
-              incident={incident} 
+              incident={{
+                ...incident,
+                participants: (incident.participants || []).map((p: any) => ({
+                  id: p.id,
+                  userId: p.userId,
+                  role: p.role === "participant" || p.role === "reviewer" || p.role === "supervisor" ? p.role : undefined,
+                  user: {
+                    id: p.user?.id ?? "",
+                    firstName: p.user?.firstName ?? "",
+                    lastName: p.user?.lastName ?? "",
+                    email: p.user?.email ?? "",
+                    role: p.user?.role ?? "",
+                    center: p.user?.center
+                      ? {
+                          code: p.user.center.code ?? "",
+                          name: p.user.center.name ?? "",
+                        }
+                      : undefined,
+                  },
+                })),
+              }} 
               onUpdate={refetchIncident}
             />
           </TabsContent>
@@ -821,30 +885,7 @@ const handleRemoveParticipant = async (userId: string) => {
           <TabsContent value="history" className="space-y-4">
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Línea de Tiempo
-                </h3>
-                <div className="space-y-4">
-                  {incident.history?.map((entry, index) => (
-                    <div key={entry.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className={`h-3 w-3 rounded-full ${
-                          index === 0 ? 'bg-primary' : 'bg-muted-foreground'
-                        }`}></div>
-                        {index < incident.history!.length - 1 && (
-                          <div className="h-8 w-0.5 bg-border mt-2"></div>
-                        )}
-                      </div>
-                      <div className="flex-1 pb-4">
-                        <p className="text-sm font-medium">{entry.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(entry.createdAt?.toString() || new Date().toISOString())} - {entry.user?.firstName || entry.user?.email || "Sistema"}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <IncidentHistory incidentId={incident.id} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -853,7 +894,6 @@ const handleRemoveParticipant = async (userId: string) => {
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
-                {/* NUEVO: Usar EvidenceViewer también en la pestaña de evidencia */}
                 <EvidenceViewer 
                   files={incident.evidenceFiles || []} 
                   className="mb-4"
@@ -875,5 +915,14 @@ const handleRemoveParticipant = async (userId: string) => {
         </Tabs>
       </DialogContent>
     </Dialog>
-  );
+
+    {/* Dialog de confirmación de eliminación */}
+    <DeleteIncidentDialog
+      incident={incident}
+      open={showDeleteDialog}
+      onOpenChange={setShowDeleteDialog}
+      onSuccess={onClose}
+    />
+  </>
+);
 }
