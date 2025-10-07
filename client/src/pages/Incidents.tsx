@@ -1,3 +1,4 @@
+// client/src/pages/Incidents.tsx
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -30,16 +31,14 @@ export default function Incidents() {
     );
   }
 
-  return (
+ return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground">Gestión de Incidencias</h1>
           <p className="text-muted-foreground">Administra y da seguimiento a todas las incidencias</p>
         </div>
-        <IncidentsList onBack={function (): void {
-          throw new Error("Function not implemented.");
-        } } />
+        <IncidentsList />
       </div>
     </Layout>
   );

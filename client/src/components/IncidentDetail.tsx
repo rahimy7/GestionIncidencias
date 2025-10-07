@@ -524,27 +524,7 @@ return (
             </div>
           </div>
           
-          {/* Botones en la esquina superior derecha */}
-          <div className="absolute top-4 right-4 flex items-center gap-2">
-            {canDeleteIncident() && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDeleteDialog(true)}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                title="Eliminar incidencia"
-              >
-                <Trash2 className="h-5 w-5" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+        
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -913,6 +893,30 @@ return (
             </Card>
           </TabsContent>
         </Tabs>
+ <div className="border-t p-4 bg-gray-50 flex justify-between items-center">
+          <div className="text-sm text-muted-foreground">
+            Creada: {incident.createdAt ? new Date(incident.createdAt).toLocaleDateString('es-ES', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            }) : 'Fecha no disponible'}
+          </div>
+          
+          {canDeleteIncident() && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar Incidencia
+            </Button>
+          )}
+        </div>
+        
       </DialogContent>
     </Dialog>
 

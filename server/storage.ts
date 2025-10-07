@@ -2758,7 +2758,69 @@ async getActionPlansByUser(userId: string) {
   }
 }
 
-
+async closeIncidentActionPlansAndTasks(incidentId: string, userId: string): Promise<{
+  actionPlansCount: number;
+  tasksCount: number;
+}> {
+  try {
+    console.log(`🔒 Cerrando planes y tareas para incidencia ${incidentId}...`);
+    
+    let closedPlansCount = 0;
+    let closedTasksCount = 0;
+    
+    // Obtener todos los planes de acción de la incidencia
+    const actionPlansList = await this.getActionPlansByIncident(incidentId);
+    
+    for (const plan of actionPlansList) {
+      // Solo cerrar planes que no estén ya completados
+      if (plan.status !== 'completed') {
+        // Primero cerrar todas las tareas del plan
+        const tasksList = await this.getActionPlanTasks(plan.id);
+        
+        for (const task of tasksList) {
+          if (task.status !== 'completed') {
+            await db
+              .update(actionPlanTasks)  // Usar la tabla importada
+              .set({
+                status: 'completed',
+                completedAt: new Date(),
+                completedBy: userId,
+                updatedAt: new Date()
+              })
+              .where(eq(actionPlanTasks.id, task.id));
+            
+            closedTasksCount++;
+            console.log(`✅ Tarea "${task.title}" (${task.id}) cerrada`);
+          }
+        }
+        
+        // Luego cerrar el plan de acción
+        await db
+          .update(actionPlans)  // Usar la tabla importada
+          .set({
+            status: 'completed',
+            completedAt: new Date(),
+            completedBy: userId,
+            updatedAt: new Date()
+          })
+          .where(eq(actionPlans.id, plan.id));
+        
+        closedPlansCount++;
+        console.log(`✅ Plan de acción "${plan.title}" (${plan.id}) cerrado`);
+      }
+    }
+    
+    console.log(`✅ Cierre completado: ${closedPlansCount} planes y ${closedTasksCount} tareas`);
+    
+    return {
+      actionPlansCount: closedPlansCount,
+      tasksCount: closedTasksCount
+    };
+  } catch (error) {
+    console.error('Error cerrando planes y tareas:', error);
+    throw error;
+  }
+}
 
 
 }

@@ -1,26 +1,29 @@
-// client/src/components/IncidentList.tsx - MEJORADO
+// client/src/components/IncidentList.tsx
 import { useState, useMemo } from "react";
 import { useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, isWithinInterval } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { IncidentDetail } from "@/components/IncidentDetail";
+import { IncidentCard } from "@/components/IncidentCard";
 import { 
-  FileText, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  Calendar,
-  MapPin,
   Filter,
   X,
-  Search,
-  Eye
+  Search
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Incident = {
   id: string;
@@ -36,6 +39,7 @@ type Incident = {
   center?: { id: string; name: string; code: string };
   type?: { id: string; name: string };
   reporter?: { firstName: string; lastName: string; email: string };
+  assignee?: { firstName: string; lastName: string; email: string };
 };
 
 type Center = { id: string; name: string; code?: string };
@@ -63,11 +67,14 @@ function useQueryString() {
 
 export default function IncidentList() {
   const { get, setMany } = useQueryString();
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [incidentToDelete, setIncidentToDelete] = useState<Incident | null>(null);
 
   // Filtros desde URL
   const centerId = get("centerId") || "all";
   const typeId = get("typeId") || "all";
+  const status = get("status") || "all";
   const startDate = get("startDate");
   const endDate = get("endDate");
   const sortBy = (get("sortBy") as SortBy) || "createdAt";
@@ -75,187 +82,162 @@ export default function IncidentList() {
 
   // Cargar datos con token
   const { data: incidents = [], isLoading } = useQuery<Incident[]>({
-    queryKey: ["incidents", { centerId, typeId, startDate, endDate, sortBy, sortDir }],
+    queryKey: ["incidents", { centerId, typeId, status, startDate, endDate, sortBy, sortDir }],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token found');
 
       const qs = new URLSearchParams();
       if (centerId && centerId !== "all") qs.set("centerId", centerId);
-  if (typeId && typeId !== "all") qs.set("typeId", typeId);
+      if (typeId && typeId !== "all") qs.set("typeId", typeId);
+      if (status && status !== "all") qs.set("status", status);
       if (startDate) qs.set("startDate", startDate);
       if (endDate) qs.set("endDate", endDate);
       if (sortBy) qs.set("sortBy", sortBy);
       if (sortDir) qs.set("sortDir", sortDir);
       
       const url = `/api/incidents${qs.toString() ? `?${qs.toString()}` : ''}`;
-      
-      const response = await fetch(url, {
-        headers: {
+      const res = await fetch(url, {
+        headers: { 
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch incidents: ${response.status}`);
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to fetch incidents');
       }
-      
-      return response.json();
+
+      return res.json();
     },
   });
 
   const { data: centers = [] } = useQuery<Center[]>({
-    queryKey: ["centers"],
+    queryKey: ["/api/centers"],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('No auth token found');
+      const res = await fetch('/api/centers', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch centers');
+      return res.json();
+    },
+  });
 
-      const response = await fetch("/api/centers", {
-        headers: {
+  const { data: types = [] } = useQuery<IncidentType[]>({
+    queryKey: ["/api/incident-types"],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/incident-types', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch incident types');
+      return res.json();
+    },
+  });
+
+  // Mutation para eliminar incidencia
+  const deleteIncidentMutation = useMutation({
+    mutationFn: async (incidentId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/incidents/${incidentId}`, {
+        method: 'DELETE',
+        headers: { 
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch centers: ${response.status}`);
+        const error = await response.json();
+        throw new Error(error.message || 'Error al eliminar la incidencia');
       }
       
       return response.json();
     },
-  });
-
-  const { data: incidentTypes = [] } = useQuery<IncidentType[]>({
-    queryKey: ["incident-types"],
-    queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('No auth token found');
-
-      const response = await fetch("/api/incident-types", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+    onSuccess: (data) => {
+      toast({
+        title: 'Incidencia eliminada',
+        description: `La incidencia ${data.deletedIncidentNumber} fue eliminada exitosamente`,
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch incident types: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      // Filtrar cualquier tipo con ID vacío
-      return data.filter((t: IncidentType) => t.id && t.id.trim() !== '');
+      // Invalidar queries para refrescar la lista
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+      setIncidentToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+      setIncidentToDelete(null);
     },
   });
 
-  // Filtrado del lado cliente
-  const clientFiltered = useMemo(() => {
-    let filtered = [...incidents];
+  const handleDeleteIncident = (incidentId: number) => {
+    const incident = incidents.find(i => i.id === String(incidentId));
+    if (incident) {
+      setIncidentToDelete(incident);
+    }
+  };
 
-    if (startDate || endDate) {
-      filtered = filtered.filter((incident) => {
-        const date = parseISO(incident.createdAt);
-        const start = startDate ? parseISO(`${startDate}T00:00:00`) : new Date(0);
-        const end = endDate ? parseISO(`${endDate}T23:59:59`) : new Date();
-        return isWithinInterval(date, { start, end });
+  const confirmDelete = () => {
+    if (incidentToDelete) {
+      deleteIncidentMutation.mutate(incidentToDelete.id);
+    }
+  };
+
+  // Filtros aplicados
+  const filtered = useMemo(() => {
+    let list = incidents;
+    if (centerId !== "all") list = list.filter(i => i.centerId === centerId);
+    if (typeId !== "all") list = list.filter(i => i.typeId === typeId);
+    if (status !== "all") list = list.filter(i => i.status === status);
+    if (startDate && endDate) {
+      const start = parseISO(startDate);
+      const end = parseISO(endDate);
+      list = list.filter(i => {
+        const d = parseISO(i.createdAt);
+        return isWithinInterval(d, { start, end });
       });
     }
+    return list;
+  }, [incidents, centerId, typeId, status, startDate, endDate]);
 
-    filtered.sort((a, b) => {
-      let aVal: any, bVal: any;
+  const activeFilters =
+    (centerId !== "all" ? 1 : 0) +
+    (typeId !== "all" ? 1 : 0) +
+    (status !== "all" ? 1 : 0) +
+    (startDate && endDate ? 1 : 0);
 
-      if (sortBy === "center") {
-        aVal = a.center?.name || "";
-        bVal = b.center?.name || "";
-      } else if (sortBy === "type") {
-        aVal = a.type?.name || "";
-        bVal = b.type?.name || "";
-      } else {
-        aVal = new Date(a.createdAt);
-        bVal = new Date(b.createdAt);
-      }
-
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [incidents, startDate, endDate, sortBy, sortDir]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'pending_approval': return 'bg-orange-100 text-orange-800';
-      case 'reported': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const clearFilters = () => {
+    setMany({ centerId: null, typeId: null, status: null, startDate: null, endDate: null });
   };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-100 text-red-800';
-      case 'high': return 'bg-orange-100 text-orange-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getPriorityIcon = (priority: string) => {
-    switch (priority) {
-      case 'critical': return <AlertCircle className="h-4 w-4 text-red-600" />;
-      case 'high': return <AlertCircle className="h-4 w-4 text-orange-600" />;
-      case 'medium': return <Clock className="h-4 w-4 text-yellow-600" />;
-      case 'low': return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-      default: return <FileText className="h-4 w-4 text-gray-600" />;
-    }
-  };
-
-  const statusLabels: Record<string, string> = {
-    'reported': 'Reportado',
-    'assigned': 'Asignado',
-    'in_progress': 'En Progreso',
-    'pending_approval': 'Pendiente',
-    'completed': 'Completado',
-    'resolved': 'Resuelto'
-  };
-
-  const priorityLabels: Record<string, string> = {
-    'low': 'Baja',
-    'medium': 'Media',
-    'high': 'Alta',
-    'critical': 'Crítica'
-  };
-
-  const hasActiveFilters = centerId || typeId || startDate || endDate;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Lista de Incidencias
+            <Filter className="h-5 w-5" />
+            Filtros
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Filtros */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Centro</label>
-              <Select value={centerId} onValueChange={(value) => setMany({ centerId: value })}>
+              <label className="text-sm font-medium mb-2 block">Centro</label>
+              <Select value={centerId} onValueChange={v => setMany({ centerId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los centros" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los centros</SelectItem>
-                  {centers.map((c) => (
+                  {centers.map(c => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name} {c.code && `(${c.code})`}
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -263,14 +245,14 @@ export default function IncidentList() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Tipo</label>
-              <Select value={typeId} onValueChange={(value) => setMany({ typeId: value })}>
+              <label className="text-sm font-medium mb-2 block">Tipo</label>
+              <Select value={typeId} onValueChange={v => setMany({ typeId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los tipos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los tipos</SelectItem>
-                  {incidentTypes.map((t) => (
+                  {types.map(t => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
                     </SelectItem>
@@ -280,180 +262,120 @@ export default function IncidentList() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Fecha desde</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setMany({ startDate: e.target.value })}
-              />
+              <label className="text-sm font-medium mb-2 block">Estado</label>
+              <Select value={status} onValueChange={v => setMany({ status: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los estados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="reported">Reportada</SelectItem>
+                  <SelectItem value="assigned">Asignada</SelectItem>
+                  <SelectItem value="in_progress">En Progreso</SelectItem>
+                  <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
+                  <SelectItem value="completed">Completada</SelectItem>
+                  <SelectItem value="closed">Cerrada</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Fecha hasta</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setMany({ endDate: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Ordenar</label>
-              <div className="flex gap-1">
-                <Select value={sortBy} onValueChange={(value) => setMany({ sortBy: value })}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="createdAt">Fecha</SelectItem>
-                    <SelectItem value="center">Centro</SelectItem>
-                    <SelectItem value="type">Tipo</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setMany({ sortDir: sortDir === "asc" ? "desc" : "asc" })}
-                  className="px-3"
-                >
-                  {sortDir === "asc" ? "↑" : "↓"}
-                </Button>
+              <label className="text-sm font-medium mb-2 block">Fecha</label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setMany({ startDate: e.target.value })}
+                  placeholder="Desde"
+                />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={e => setMany({ endDate: e.target.value })}
+                  placeholder="Hasta"
+                />
               </div>
             </div>
           </div>
 
-          {/* Limpiar filtros */}
-          {hasActiveFilters && (
-            <div className="flex items-center gap-2">
+          {activeFilters > 0 && (
+            <div className="mt-4 flex items-center justify-between">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                onClick={() => setMany({ centerId: "all", typeId: "all", startDate: "", endDate: "" })}
+                onClick={clearFilters}
                 className="flex items-center gap-2"
               >
                 <X className="h-4 w-4" />
                 Limpiar filtros
               </Button>
               <span className="text-sm text-muted-foreground">
-                {clientFiltered.length} de {incidents.length} incidencias
+                {filtered.length} de {incidents.length} incidencias
               </span>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Lista de incidencias */}
-      <div className="space-y-4">
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <Card key={i} className="animate-pulse">
-                <CardContent className="p-4">
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : clientFiltered.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No se encontraron incidencias</h3>
-              <p className="text-muted-foreground">
-                {hasActiveFilters 
-                  ? "Intenta ajustar los filtros de búsqueda"
-                  : "No hay incidencias disponibles en este momento"
-                }
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {clientFiltered.map((incident) => (
-              <Card 
-                key={incident.id} 
-                className="hover:shadow-lg transition-shadow cursor-pointer group"
-                onClick={() => setSelectedIncident(incident)}
-              >
-                <CardContent className="p-4">
-                  <div className="space-y-3">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors">
-                          {incident.title}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          #{incident.incidentNumber}
-                        </p>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIncident(incident);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {/* Badges */}
-                    <div className="flex items-center gap-2">
-                      <Badge className={getStatusColor(incident.status)}>
-                        {statusLabels[incident.status] || incident.status}
-                      </Badge>
-                      <Badge className={getPriorityColor(incident.priority)}>
-                        <div className="flex items-center gap-1">
-                          {getPriorityIcon(incident.priority)}
-                          {priorityLabels[incident.priority] || incident.priority}
-                        </div>
-                      </Badge>
-                    </div>
-
-                    {/* Descripción */}
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {incident.description}
-                    </p>
-
-                    {/* Meta información */}
-                    <div className="space-y-2 pt-2 border-t">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        <span>{incident.center?.name || `Centro ${incident.centerId}`}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        <span>{format(parseISO(incident.createdAt), "dd/MM/yyyy HH:mm")}</span>
-                      </div>
-                      {incident.type && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <FileText className="h-4 w-4" />
-                          <span>{incident.type.name}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">
+          Lista de Incidencias ({filtered.length})
+        </h2>
       </div>
 
-      {/* Modal de detalles */}
-      {selectedIncident && (
-        <IncidentDetail
-          incident={selectedIncident as any}
-          onClose={() => setSelectedIncident(null)}
-        />
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Cargando incidencias...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">No se encontraron incidencias</p>
+              <p className="text-muted-foreground mt-2">
+                {activeFilters > 0
+                  ? "Intenta ajustar los filtros para ver más resultados"
+                  : "No hay incidencias registradas"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(incident => (
+            <IncidentCard
+              key={incident.id}
+              incident={incident}
+              onDelete={handleDeleteIncident}
+            />
+          ))}
+        </div>
       )}
+
+      {/* Diálogo de confirmación de eliminación */}
+      <AlertDialog open={!!incidentToDelete} onOpenChange={() => setIncidentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente la incidencia{' '}
+              <strong>{incidentToDelete?.incidentNumber}</strong>
+              {' '}- {incidentToDelete?.title} y todos sus datos relacionados (planes de acción, tareas, comentarios, etc.).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteIncidentMutation.isPending}
+            >
+              {deleteIncidentMutation.isPending ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

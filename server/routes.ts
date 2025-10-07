@@ -504,8 +504,49 @@ app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
     }
 
     const updates = req.body;
+    const previousStatus = incident.status;
+    
+    // Actualizar la incidencia
     const updatedIncident = await storage.updateIncident(id, updates, userId);
 
+    // ✅ NUEVA FUNCIONALIDAD: Si se marca como completada, cerrar planes de acción y tareas
+    if (updates.status === 'completed' && previousStatus !== 'completed') {
+      try {
+        // Usar el nuevo método del storage para cerrar todo
+        const result = await storage.closeIncidentActionPlansAndTasks(id, userId);
+        
+        // Registrar en el historial
+        await storage.addIncidentHistory({
+          incidentId: id,
+          userId: userId,
+          action: "incident_completed_with_closure",
+          description: `Incidencia completada. Se cerraron automáticamente ${result.actionPlansCount} planes de acción y ${result.tasksCount} tareas`,
+          metadata: {
+            actionPlansCount: result.actionPlansCount,
+            tasksCount: result.tasksCount,
+            completedAt: new Date().toISOString()
+          },
+        });
+        
+        console.log(`✅ Incidencia ${id} completada con ${result.actionPlansCount} planes y ${result.tasksCount} tareas cerrados`);
+        
+      } catch (closingError) {
+        console.error('Error al cerrar planes de acción y tareas:', closingError);
+        // No fallar la actualización de la incidencia si hay error cerrando planes
+        // Solo registrar el error
+        await storage.addIncidentHistory({
+          incidentId: id,
+          userId: userId,
+          action: "error_closing_plans",
+          description: `Error al cerrar automáticamente planes y tareas: ${closingError instanceof Error ? closingError.message : 'Error desconocido'}`,
+          metadata: {
+            error: closingError instanceof Error ? closingError.message : 'Unknown error'
+          },
+        });
+      }
+    }
+
+    // Registrar en el historial la actualización normal
     await storage.addIncidentHistory({
       incidentId: id,
       userId: userId,
