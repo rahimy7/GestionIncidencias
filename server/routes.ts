@@ -1683,15 +1683,18 @@ app.get('/api/action-plans/assigned', isAuthenticated, async (req: any, res) => 
 
 // PUT /api/action-plans/:id/status - Actualizar estado de plan de acción
 
+// server/routes.ts - BUSCAR Y REEMPLAZAR este endpoint (alrededor de línea 1700-1750)
+
+// ❌ VERSIÓN INCORRECTA (la actual):
 app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) => {
   try {
     const planId = req.params.id;
     const userId = req.user.id;
-    console.log(`User ${userId} updating action plan ${planId} status`);
+    console.log(`📝 User ${userId} updating action plan ${planId} status`);
     
-    // Permitir solo transiciones válidas que el usuario puede hacer
+    // Validar datos de entrada
     const updateSchema = z.object({
-      status: z.enum(['pending', 'in_progress', 'completed']), // No permitir que el usuario establezca 'overdue' manualmente
+      status: z.enum(['pending', 'in_progress', 'completed']),
       completedAt: z.string().optional()
     });
 
@@ -1705,50 +1708,128 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
 
     const { status, completedAt } = validationResult.data;
 
-    // Verificar que el usuario puede actualizar este plan
+    // Verificar permisos usando la función correcta
+    const isResponsible = await storage.isUserResponsibleForActionPlan(planId, userId);
+    
+    if (!isResponsible) {
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden actualizar el estado' 
+      });
+    }
+
+    // Obtener el plan para verificar datos
     const actionPlan = await storage.getActionPlanById(planId);
     if (!actionPlan) {
       return res.status(404).json({ error: 'Plan de acción no encontrado' });
     }
 
-    // Verificar permisos (responsable o participante)
-    const hasPermission = actionPlan.assigneeId === userId || 
-      (actionPlan.participants && actionPlan.participants.some((p: any) => p.userId === userId));
-    
-    if (!hasPermission) {
-      return res.status(403).json({ 
-        error: 'No tienes permisos para actualizar este plan',
-        userRole: actionPlan.assigneeId === userId ? 'assignee' : 'none'
-      });
+    // Si se está completando, verificar que todas las tareas estén completadas
+    if (status === 'completed') {
+      const allTasksCompleted = await storage.areAllTasksCompleted(planId);
+      if (!allTasksCompleted) {
+        return res.status(400).json({ 
+          error: 'Todas las tareas deben estar completadas antes de cerrar el plan' 
+        });
+      }
     }
 
     // Determinar el estado final considerando vencimientos
     const finalStatus = getActionPlanStatusWithOverdue(
-      status, // Ahora coincide con el tipo
+      status,
       new Date(actionPlan.dueDate),
       actionPlan.status
     );
 
-    const updatedPlan = await storage.updateActionPlanStatus(planId, {
+    // Actualizar el plan
+    const updatedPlan = await storage.updateActionPlan(planId, {
       status: finalStatus,
       completedAt: status === 'completed' ? new Date() : (completedAt ? new Date(completedAt) : null),
-      updatedBy: userId
+      completedBy: status === 'completed' ? userId : null
     });
 
+    console.log('✅ Action plan status updated successfully');
     res.json(updatedPlan);
   } catch (error) {
-    console.error('Error updating action plan status:', error);
+    console.error('❌ Error updating action plan status:', error);
     res.status(500).json({ 
       error: 'Error interno del servidor',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
-// GET /api/action-plans/:id - Obtener detalle de un plan de acción específico
 
-// server/routes.ts - Agregar estas rutas después de las existentes
+// ✅ VERSIÓN CORRECTA - Reemplazar con esto:
+app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) => {
+  try {
+    const planId = req.params.id;
+    const userId = req.user.id;
+    console.log(`📝 User ${userId} updating action plan ${planId} status`);
+    
+    // Validar datos
+    const updateSchema = z.object({
+      status: z.enum(['pending', 'in_progress', 'completed']),
+      completedAt: z.string().optional()
+    });
 
-// ===== RUTAS MEJORADAS DE PLANES DE ACCIÓN =====
+    const validationResult = updateSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        error: 'Datos inválidos',
+        details: validationResult.error.issues
+      });
+    }
+
+    const { status, completedAt } = validationResult.data;
+
+    // ✅ CORRECCIÓN: Usar isUserResponsibleForActionPlan que ya incluye center_manager
+    const isResponsible = await storage.isUserResponsibleForActionPlan(planId, userId);
+    
+    if (!isResponsible) {
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden actualizar el estado' 
+      });
+    }
+
+    // Obtener el plan para verificar la fecha de vencimiento
+    const actionPlan = await storage.getActionPlanById(planId);
+    if (!actionPlan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado' });
+    }
+
+    // Si se está completando el plan, verificar que todas las tareas estén completadas
+    if (status === 'completed') {
+      const allTasksCompleted = await storage.areAllTasksCompleted(planId);
+      if (!allTasksCompleted) {
+        return res.status(400).json({ 
+          error: 'Todas las tareas deben estar completadas antes de cerrar el plan' 
+        });
+      }
+    }
+
+    // Determinar el estado final considerando vencimientos
+    const finalStatus = getActionPlanStatusWithOverdue(
+      status,
+      new Date(actionPlan.dueDate),
+      actionPlan.status
+    );
+
+    // Actualizar el plan
+    const updatedPlan = await storage.updateActionPlan(planId, {
+      status: finalStatus,
+      completedAt: status === 'completed' ? new Date() : (completedAt ? new Date(completedAt) : null),
+      completedBy: status === 'completed' ? userId : null
+    });
+
+    console.log('✅ Action plan status updated successfully');
+    res.json(updatedPlan);
+  } catch (error) {
+    console.error('❌ Error updating action plan status:', error);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
 
 // GET /api/action-plans/:id - Obtener detalles completos de un plan de acción
 app.get('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
@@ -1756,19 +1837,29 @@ app.get('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    // Verificar que el usuario tiene acceso al plan (es responsable o participante)
-    const actionPlan = await storage.getActionPlanWithDetails(id, userId);
+    console.log('📋 Fetching action plan details:', { id, userId });
     
-    if (!actionPlan) {
-      return res.status(404).json({ error: 'Plan de acción no encontrado o sin acceso' });
+    // Verificar que el usuario tiene acceso al plan
+    const hasAccess = await storage.userHasAccessToActionPlan(id, userId);
+    if (!hasAccess) {
+      console.log('❌ User does not have access to action plan');
+      return res.status(403).json({ error: 'Sin acceso al plan de acción' });
     }
     
+    // ✅ Usar la función correcta
+    const actionPlan = await storage.getActionPlanDetails(id, userId);
+    
+    if (!actionPlan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado' });
+    }
+    
+    console.log('✅ Action plan details fetched successfully');
     res.json(actionPlan);
   } catch (error) {
-    console.error('Error fetching action plan details:', error);
+    console.error('❌ Error fetching action plan details:', error);
     res.status(500).json({ 
       error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : "Unknown error"
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -1808,41 +1899,137 @@ app.post('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) =
   }
 });
 
+
+// PATCH /api/action-plans/:id - Actualizar estado del plan de acción
+app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const updates = req.body;
+    
+    console.log('📝 Updating action plan:', { id, updates, userId });
+    
+    // Verificar que el usuario es responsable del plan O manager del centro
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden editarlo' 
+      });
+    }
+    
+    // Si se está completando el plan, verificar que todas las tareas estén completadas
+    if (updates.status === 'completed') {
+      const allTasksCompleted = await storage.areAllTasksCompleted(id);
+      if (!allTasksCompleted) {
+        return res.status(400).json({ 
+          error: 'Todas las tareas deben estar completadas antes de cerrar el plan' 
+        });
+      }
+      updates.completedAt = new Date();
+      updates.completedBy = userId;
+    }
+    
+    // Actualizar el plan
+    const updatedPlan = await storage.updateActionPlan(id, updates);
+    
+    console.log('✅ Action plan updated successfully');
+    res.json(updatedPlan);
+  } catch (error) {
+    console.error('❌ Error updating action plan:', error);
+    res.status(500).json({ 
+      error: 'Error al actualizar plan de acción',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.delete('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    console.log('🗑️ Deleting action plan:', { id, userId });
+    
+    // Verificar que el usuario es responsable del plan O manager del centro
+    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
+    if (!isResponsible) {
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden eliminarlo' 
+      });
+    }
+    
+    // Obtener el plan para verificar que existe
+    const plan = await storage.getActionPlanById(id);
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan de acción no encontrado' });
+    }
+    
+    // Eliminar el plan (esto eliminará en cascada las tareas, comentarios y participantes)
+    await storage.deleteActionPlan(id);
+    
+    console.log('✅ Action plan deleted successfully');
+    res.json({ 
+      success: true, 
+      message: 'Plan de acción eliminado correctamente' 
+    });
+  } catch (error) {
+    console.error('❌ Error deleting action plan:', error);
+    res.status(500).json({ 
+      error: 'Error al eliminar plan de acción',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // PATCH /api/action-plans/:id/tasks/:taskId - Actualizar tarea (marcar como completada)
 
 app.patch('/api/action-plans/:id/tasks/:taskId', 
   isAuthenticated,
-  upload.array('evidence', 5), // Máximo 5 archivos de evidencia
+  upload.array('evidence', 5),
   async (req: any, res) => {
     try {
       const { id, taskId } = req.params;
-      const { status } = req.body;
       const userId = req.user.id;
+      const updates = req.body;
       
-      const canComplete = await storage.canUserCompleteTask(taskId, userId);
-      if (!canComplete) {
-        return res.status(403).json({ error: 'No tienes permisos para actualizar esta tarea' });
+      console.log('📝 Updating task:', { id, taskId, updates, userId });
+      
+      // Verificar permisos: puede editar si es responsable del plan, manager del centro, o asignado de la tarea
+      const canEdit = await storage.canUserCompleteTask(taskId, userId);
+      if (!canEdit) {
+        return res.status(403).json({ 
+          error: 'No tienes permisos para editar esta tarea' 
+        });
       }
       
-      // Procesar archivos de evidencia subidos
+      // Procesar archivos de evidencia si se están subiendo
       let evidenceFiles: string[] = [];
       if (req.files && req.files.length > 0) {
         evidenceFiles = req.files.map((file: any) => `/uploads/${file.filename}`);
-        console.log('Archivos de evidencia procesados:', evidenceFiles);
+        console.log('📎 Evidence files processed:', evidenceFiles);
+        updates.evidence = evidenceFiles;
       }
       
-      const updatedTask = await storage.updateActionPlanTask(taskId, {
-        status,
-        completedAt: status === 'completed' ? new Date() : null,
-        completedBy: status === 'completed' ? userId : null,
-        evidence: evidenceFiles // Pasar los archivos procesados
-      });
+      // Si se está completando, agregar metadata
+      if (updates.status === 'completed') {
+        updates.completedAt = new Date();
+        updates.completedBy = userId;
+      }
       
+      // Actualizar la tarea
+      const updatedTask = await storage.updateActionPlanTask(taskId, updates);
+      
+      // Actualizar progreso del plan
       await storage.updateActionPlanProgress(id);
+      
+      console.log('✅ Task updated successfully');
       res.json(updatedTask);
     } catch (error) {
-      console.error('Error updating task:', error);
-      res.status(500).json({ error: 'Error al actualizar tarea' });
+      console.error('❌ Error updating task:', error);
+      res.status(500).json({ 
+        error: 'Error al actualizar tarea',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 );
@@ -1899,41 +2086,6 @@ app.post('/api/action-plans/:id/comments',
     }
   }
 );
-// PATCH /api/action-plans/:id - Actualizar estado del plan de acción
-app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const userId = req.user.id;
-    
-    // Verificar que el usuario es responsable del plan O manager del centro
-    const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
-    if (!isResponsible) {
-      return res.status(403).json({ 
-        error: 'Solo el responsable del plan o el manager del centro pueden completar el plan' 
-      });
-    }
-    
-    // Verificar que todas las tareas estén completadas antes de completar el plan
-    if (status === 'completed') {
-      const allTasksCompleted = await storage.areAllTasksCompleted(id);
-      if (!allTasksCompleted) {
-        return res.status(400).json({ error: 'Todas las tareas deben estar completadas' });
-      }
-    }
-    
-    const updatedPlan = await storage.updateActionPlan(id, {
-      status,
-      completedAt: status === 'completed' ? new Date() : null,
-      completedBy: status === 'completed' ? userId : null
-    });
-    
-    res.json(updatedPlan);
-  } catch (error) {
-    console.error('Error updating action plan:', error);
-    res.status(500).json({ error: 'Error al actualizar plan de acción' });
-  }
-});
 
 // GET /api/action-plans/:id/tasks - Obtener tareas de un plan específico
 app.get('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) => {

@@ -1943,40 +1943,39 @@ async getCenter(centerId: string): Promise<Center | null> {
 // Agregar estos métodos a la clase Storage
 
 
-async getActionPlanById(planId: string) {
+async getActionPlanById(actionPlanId: string) {
   try {
-    const result = await db
+    const [plan] = await db
       .select()
       .from(actionPlans)
-      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
-      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .where(eq(actionPlans.id, planId))
+      .where(eq(actionPlans.id, actionPlanId))
       .limit(1);
 
-    if (result.length === 0) {
-      return null;
-    }
-
-    const planRow = result[0];
-
-    // Obtener participantes
-    const participants = await db
-      .select()
-      .from(actionPlanParticipants)
-      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
-      .where(eq(actionPlanParticipants.actionPlanId, planId));
-
-    return {
-      ...planRow.action_plans,
-      assignee: planRow.users,
-      incident: planRow.incidents,
-      participants: participants.map(p => ({
-        ...p.action_plan_participants,
-        user: p.users
-      }))
-    };
+    return plan || null;
   } catch (error) {
-    console.error('Error fetching action plan by id:', error);
+    console.error('Error getting action plan by ID:', error);
+    throw error;
+  }
+}
+
+async deleteActionPlan(actionPlanId: string) {
+  try {
+    console.log('🗑️ Deleting action plan:', actionPlanId);
+    
+    // La eliminación en cascada debería manejar:
+    // - action_plan_participants
+    // - action_plan_comments
+    // - action_plan_tasks -> task_evidence
+    // Esto depende de la configuración de foreign keys con onDelete: 'cascade'
+    
+    await db
+      .delete(actionPlans)
+      .where(eq(actionPlans.id, actionPlanId));
+    
+    console.log('✅ Action plan deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Error deleting action plan:', error);
     throw error;
   }
 }
@@ -2014,65 +2013,173 @@ async updateActionPlanStatus(planId: string, updateData: {
 }
 
 // Obtener detalles completos de un plan de acción
-async getActionPlanWithDetails(actionPlanId: string, userId: string) {
+async getActionPlanDetails(actionPlanId: string, userId: string) {
   try {
-    // Usar la función de verificación actualizada
-    const hasAccess = await this.userHasAccessToActionPlan(actionPlanId, userId);
-    if (!hasAccess) {
-      console.log('❌ User has no access to plan:', { actionPlanId, userId });
-      return null;
-    }
+    console.log('🔍 Getting action plan details:', { actionPlanId, userId });
 
-    // Obtener plan completo con relaciones
-    const planData = await db
-      .select()
+    // Obtener el plan con todas sus relaciones
+    const planResult = await db
+      .select({
+        action_plans: actionPlans,
+        users: users,
+        incidents: incidents,
+        centers: centers,
+      })
       .from(actionPlans)
-      .innerJoin(users, eq(actionPlans.assigneeId, users.id))
+      .leftJoin(users, eq(actionPlans.assigneeId, users.id))
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
       .leftJoin(centers, eq(incidents.centerId, centers.id))
-      .leftJoin(incidentTypes, eq(incidents.typeId, incidentTypes.id))
       .where(eq(actionPlans.id, actionPlanId))
       .limit(1);
 
-    if (planData.length === 0) {
-      return null;
+    if (planResult.length === 0) {
+      throw new Error('Action plan not found');
     }
 
-    const plan = planData[0];
+    const plan = planResult[0];
 
-    // Verificar que tenemos los datos necesarios
+    // ✅ FIX: Verificar que users existe antes de usar
     if (!plan.users) {
-      throw new Error(`No user found for action plan ${actionPlanId}`);
+      throw new Error('Action plan assignee not found');
     }
 
     // Obtener participantes del plan
     const participantsData = await db
-      .select()
+      .select({
+        action_plan_participants: actionPlanParticipants,
+        users: users,
+      })
       .from(actionPlanParticipants)
-      .innerJoin(users, eq(actionPlanParticipants.userId, users.id))
+      .leftJoin(users, eq(actionPlanParticipants.userId, users.id))
       .where(eq(actionPlanParticipants.actionPlanId, actionPlanId));
 
-    // Obtener tareas
-    const tasks = await this.getActionPlanTasks(actionPlanId);
+    // Obtener tareas con evidencia
+    const tasksData = await db
+      .select({
+        action_plan_tasks: actionPlanTasks,
+        users: users,
+      })
+      .from(actionPlanTasks)
+      .leftJoin(users, eq(actionPlanTasks.assigneeId, users.id))
+      .where(eq(actionPlanTasks.actionPlanId, actionPlanId))
+      .orderBy(actionPlanTasks.createdAt);
+
+    const tasks = [];
+    for (const taskRow of tasksData) {
+      // ✅ FIX: Verificar que users existe antes de usar
+      if (!taskRow.users) {
+        console.warn(`Task ${taskRow.action_plan_tasks.id} has no assignee user`);
+        continue;
+      }
+
+      const evidence = await db
+        .select()
+        .from(taskEvidence)
+        .where(eq(taskEvidence.taskId, taskRow.action_plan_tasks.id));
+
+      tasks.push({
+        id: taskRow.action_plan_tasks.id,
+        title: taskRow.action_plan_tasks.title,
+        description: taskRow.action_plan_tasks.description,
+        dueDate: taskRow.action_plan_tasks.dueDate,
+        status: taskRow.action_plan_tasks.status,
+        assigneeId: taskRow.action_plan_tasks.assigneeId,
+        assigneeName: `${taskRow.users.firstName} ${taskRow.users.lastName}`.trim(),
+        evidence: evidence.map(e => ({
+          id: e.id,
+          filename: e.filename,
+          url: e.url,
+          uploadedAt: e.uploadedAt,
+          uploadedBy: e.uploadedBy,
+        })),
+        completedAt: taskRow.action_plan_tasks.completedAt,
+        completedBy: taskRow.action_plan_tasks.completedBy,
+        createdAt: taskRow.action_plan_tasks.createdAt,
+      });
+    }
 
     // Obtener comentarios
-    const comments = await this.getActionPlanComments(actionPlanId);
+    const commentsData = await db
+      .select({
+        action_plan_comments: actionPlanComments,
+        users: users,
+      })
+      .from(actionPlanComments)
+      .leftJoin(users, eq(actionPlanComments.authorId, users.id))
+      .where(eq(actionPlanComments.actionPlanId, actionPlanId))
+      .orderBy(actionPlanComments.createdAt);
+
+    // ✅ FIX: Manejar usuarios null y eliminar attachments
+    const comments = commentsData
+      .filter(c => c.users !== null) // Filtrar comentarios sin usuario
+      .map(c => ({
+        id: c.action_plan_comments.id,
+        content: c.action_plan_comments.content,
+        authorId: c.action_plan_comments.authorId,
+        authorName: `${c.users!.firstName} ${c.users!.lastName}`.trim(), // ! porque ya filtramos null
+        createdAt: c.action_plan_comments.createdAt,
+        attachments: [], // ✅ FIX: Por ahora vacío, no existe en el schema
+      }));
 
     // Calcular progreso
-    const completedTasks = tasks.filter(t => t.status === 'completed').length;
-    const progress = tasks.length > 0 ? (completedTasks / tasks.length) * 100 : 0;
+    const completedTasks = tasks.filter(t => t.status === 'completed');
+    const progress = tasks.length > 0 
+      ? (completedTasks.length / tasks.length) * 100 
+      : 0;
 
-    // Determinar rol del usuario (más específico)
+    // Determinar rol del usuario basado en rol + centerId
     let userRole = 'participant';
+    
+    // Obtener información del usuario actual
+    const [currentUser] = await db
+      .select({
+        role: users.role,
+        centerId: users.centerId
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    console.log('👤 Current user info:', { 
+      userId, 
+      role: currentUser?.role, 
+      centerId: currentUser?.centerId,
+      incidentCenterId: plan.incidents?.centerId 
+    });
+
+    // 1. Es el responsable directo del plan
     if (plan.action_plans.assigneeId === userId) {
       userRole = 'responsible';
-    } else if (plan.incidents?.reporterId === userId) {
+      console.log('✅ User is responsible');
+    } 
+    // 2. Es reportador de la incidencia
+    else if (plan.incidents?.reporterId === userId) {
       userRole = 'incident_reporter';
-    } else if (plan.incidents?.assigneeId === userId) {
+      console.log('✅ User is incident reporter');
+    } 
+    // 3. Es asignado de la incidencia
+    else if (plan.incidents?.assigneeId === userId) {
       userRole = 'incident_assignee';
-    } else if (plan.centers?.managerId === userId) {
+      console.log('✅ User is incident assignee');
+    } 
+    // 4. Es manager del centro (rol + centerId)
+    else if (
+      currentUser?.role === 'manager' && 
+      currentUser?.centerId === plan.incidents?.centerId
+    ) {
       userRole = 'center_manager';
+      console.log('✅ User is center manager (role + centerId match)');
     }
+
+    // ✅ FIX: Filtrar participantes con usuarios null
+    const validParticipants = participantsData
+      .filter(p => p.users !== null)
+      .map(p => ({
+        id: p.users!.id,
+        name: `${p.users!.firstName} ${p.users!.lastName}`.trim(),
+        email: p.users!.email,
+        role: p.action_plan_participants.role,
+      }));
 
     return {
       id: plan.action_plans.id,
@@ -2086,12 +2193,7 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
         name: `${plan.users.firstName} ${plan.users.lastName}`.trim(),
         email: plan.users.email,
       },
-      participants: participantsData.map(p => ({
-        id: p.users.id,
-        name: `${p.users.firstName} ${p.users.lastName}`.trim(),
-        email: p.users.email,
-        role: p.action_plan_participants.role,
-      })),
+      participants: validParticipants,
       tasks,
       comments,
       incident: plan.incidents ? {
@@ -2107,42 +2209,50 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
     throw error;
   }
 }
-
+// ============================================================================
+// 2. ACTUALIZAR isUserResponsibleForActionPlan()
+// ============================================================================
 async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
   try {
     // Verificar si es el responsable directo
     const planResult = await db
-      .select()
-      .from(actionPlans)
-      .where(
-        and(
-          eq(actionPlans.id, actionPlanId),
-          eq(actionPlans.assigneeId, userId)
-        )
-      )
-      .limit(1);
-
-    if (planResult.length > 0) {
-      return true;
-    }
-
-    // NUEVO: Verificar si es el manager del centro
-    const planInfo = await db
       .select({
-        centerId: incidents.centerId,
-        centerManagerId: centers.managerId
+        assigneeId: actionPlans.assigneeId,
+        incidentCenterId: incidents.centerId
       })
       .from(actionPlans)
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
       .where(eq(actionPlans.id, actionPlanId))
       .limit(1);
 
-    if (planInfo.length > 0 && planInfo[0].centerManagerId === userId) {
-      console.log('✅ Center manager permission granted for action plan');
+    if (planResult.length === 0) {
+      return false;
+    }
+
+    const plan = planResult[0];
+
+    // Es el responsable directo
+    if (plan.assigneeId === userId) {
+      console.log('✅ User is direct assignee');
       return true;
     }
 
+    // CORRECCIÓN: Verificar si es manager del centro (rol + centerId)
+    const [user] = await db
+      .select({
+        role: users.role,
+        centerId: users.centerId
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user?.role === 'manager' && user?.centerId === plan.incidentCenterId) {
+      console.log('✅ User is center manager (role + centerId)');
+      return true;
+    }
+
+    console.log('❌ User is not responsible or center manager');
     return false;
   } catch (error) {
     console.error('Error checking user responsibility:', error);
@@ -2152,7 +2262,6 @@ async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Prom
 
 // Verificar si el usuario tiene acceso al plan
 // En server/storage.ts - Reemplazar userHasAccessToActionPlan
-
 async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
   try {
     console.log('🔐 Checking access:', { actionPlanId, userId });
@@ -2165,12 +2274,10 @@ async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<b
         incidentId: actionPlans.incidentId,
         incidentReporterId: incidents.reporterId,
         incidentAssigneeId: incidents.assigneeId,
-        centerId: incidents.centerId,
-        centerManagerId: centers.managerId
+        incidentCenterId: incidents.centerId
       })
       .from(actionPlans)
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
       .where(eq(actionPlans.id, actionPlanId))
       .limit(1);
 
@@ -2180,19 +2287,12 @@ async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<b
     }
 
     const plan = planInfo[0];
-    console.log('📋 Plan info:', { 
-      centerId: plan.centerId,
-      centerManagerId: plan.centerManagerId,
-      incidentReporterId: plan.incidentReporterId,
-      incidentAssigneeId: plan.incidentAssigneeId,
-      planAssigneeId: plan.planAssigneeId
-    });
+    console.log('📋 Plan info:', plan);
 
-    // Verificar acceso directo (responsable del plan, reportero, asignado de incidencia)
+    // Verificar acceso directo
     if (plan.planAssigneeId === userId || 
         plan.incidentReporterId === userId || 
-        plan.incidentAssigneeId === userId ||
-        plan.centerManagerId === userId) {
+        plan.incidentAssigneeId === userId) {
       console.log('✅ Direct access granted');
       return true;
     }
@@ -2214,24 +2314,29 @@ async userHasAccessToActionPlan(actionPlanId: string, userId: string): Promise<b
       return true;
     }
 
-    // Verificar si es manager del centro usando isManagerOfCenter
-    if (plan.centerId) {
-      const isManager = await this.isManagerOfCenter(userId, plan.centerId);
-      console.log('🏢 Manager check:', { userId, centerId: plan.centerId, isManager });
-      
-      if (isManager) {
-        console.log('✅ Center manager access granted');
-        return true;
-      }
+    // CORRECCIÓN: Verificar si es manager del centro (rol + centerId)
+    const [user] = await db
+      .select({
+        role: users.role,
+        centerId: users.centerId
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user?.role === 'manager' && user?.centerId === plan.incidentCenterId) {
+      console.log('✅ Center manager access granted (role + centerId)');
+      return true;
     }
 
     console.log('❌ No access found');
     return false;
   } catch (error) {
-    console.error('💥 Error checking user access:', error);
+    console.error('Error checking access:', error);
     return false;
   }
 }
+
 // Agregar tarea a plan de acción
 async addActionPlanTask(taskData: {
   actionPlanId: string;
@@ -2316,18 +2421,15 @@ async getActionPlanTasks(actionPlanId: string) {
 // Verificar si el usuario puede completar una tarea
 async canUserCompleteTask(taskId: string, userId: string): Promise<boolean> {
   try {
-    // Verificar si es el asignado a la tarea o el responsable del plan
     const result = await db
       .select({
         taskAssigneeId: actionPlanTasks.assigneeId,
         planAssigneeId: actionPlans.assigneeId,
-        centerId: incidents.centerId,
-        centerManagerId: centers.managerId
+        incidentCenterId: incidents.centerId
       })
       .from(actionPlanTasks)
       .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .leftJoin(centers, eq(incidents.centerId, centers.id))
       .where(eq(actionPlanTasks.id, taskId))
       .limit(1);
 
@@ -2337,15 +2439,35 @@ async canUserCompleteTask(taskId: string, userId: string): Promise<boolean> {
 
     const task = result[0];
 
-    // Puede completar si es:
-    // 1. El asignado a la tarea
-    // 2. El responsable del plan
-    // 3. El manager del centro
-    return (
-      task.taskAssigneeId === userId ||
-      task.planAssigneeId === userId ||
-      task.centerManagerId === userId
-    );
+    // Es el asignado a la tarea
+    if (task.taskAssigneeId === userId) {
+      console.log('✅ User is task assignee');
+      return true;
+    }
+
+    // Es el responsable del plan
+    if (task.planAssigneeId === userId) {
+      console.log('✅ User is plan assignee');
+      return true;
+    }
+
+    // CORRECCIÓN: Es manager del centro (rol + centerId)
+    const [user] = await db
+      .select({
+        role: users.role,
+        centerId: users.centerId
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user?.role === 'manager' && user?.centerId === task.incidentCenterId) {
+      console.log('✅ User is center manager (role + centerId)');
+      return true;
+    }
+
+    console.log('❌ User cannot complete task');
+    return false;
   } catch (error) {
     console.error('Error checking task completion permission:', error);
     return false;
@@ -2353,43 +2475,6 @@ async canUserCompleteTask(taskId: string, userId: string): Promise<boolean> {
 }
 
 // Actualizar tarea
-async updateActionPlanTask(taskId: string, updates: {
-  status?: string;
-  completedAt?: Date | null;
-  completedBy?: string | null;
-  evidence?: string[];
-  assigneeId?: string;
-}) {
-  try {
-    const updatedTask = await db
-      .update(actionPlanTasks)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-      })
-      .where(eq(actionPlanTasks.id, taskId))
-      .returning();
-
-    // Si se agrega evidencia, guardarla
-    if (updates.evidence && updates.evidence.length > 0) {
-      for (const evidenceUrl of updates.evidence) {
-        await db.insert(taskEvidence).values({
-          id: crypto.randomUUID(),
-          taskId,
-          filename: evidenceUrl.split('/').pop() || 'evidence',
-          url: evidenceUrl,
-          uploadedAt: new Date(),
-          uploadedBy: updates.completedBy || '',
-        });
-      }
-    }
-
-    return updatedTask[0];
-  } catch (error) {
-    console.error('Error updating action plan task:', error);
-    throw error;
-  }
-}
 
 
 async updateActionPlanProgress(actionPlanId: string) {
@@ -2507,12 +2592,69 @@ async getActionPlanComments(actionPlanId: string) {
 }
 
 // Actualizar plan de acción
+
+async updateActionPlanTask(taskId: string, updates: {
+  title?: string;
+  description?: string;
+  dueDate?: Date;
+  status?: 'pending' | 'in_progress' | 'completed'; // ✅ Tipo específico
+  assigneeId?: string;
+  completedAt?: Date | null;
+  completedBy?: string | null;
+  evidence?: string[];
+}) {
+  try {
+    console.log('📝 Updating task:', { taskId, updates });
+    
+    // Preparar los campos a actualizar (excluir evidence que se maneja aparte)
+    const { evidence, ...taskUpdates } = updates;
+    
+    const updatedTask = await db
+      .update(actionPlanTasks)
+      .set({
+        ...taskUpdates,
+        updatedAt: new Date(),
+      })
+      .where(eq(actionPlanTasks.id, taskId))
+      .returning();
+
+    // Si se agregó evidencia, guardarla
+    if (evidence && evidence.length > 0) {
+      for (const evidenceUrl of evidence) {
+        await db.insert(taskEvidence).values({
+          id: crypto.randomUUID(),
+          taskId,
+          filename: evidenceUrl.split('/').pop() || 'evidence',
+          url: evidenceUrl,
+          uploadedAt: new Date(),
+          uploadedBy: updates.completedBy || '',
+        });
+      }
+    }
+
+    console.log('✅ Task updated successfully');
+    return updatedTask[0];
+  } catch (error) {
+    console.error('❌ Error updating action plan task:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// 4. Actualizar updateActionPlan para soportar más campos
+// ============================================================================
 async updateActionPlan(actionPlanId: string, updates: {
-  status?: typeof actionPlans.status.enumValues[number];
+  title?: string;
+  description?: string;
+  status?: 'pending' | 'in_progress' | 'completed' | 'overdue'; // ✅ Tipo específico
+  dueDate?: Date;
+  assigneeId?: string;
   completedAt?: Date | null;
   completedBy?: string | null;
 }) {
   try {
+    console.log('📝 Updating action plan:', { actionPlanId, updates });
+    
     const updatedPlan = await db
       .update(actionPlans)
       .set({
@@ -2522,13 +2664,13 @@ async updateActionPlan(actionPlanId: string, updates: {
       .where(eq(actionPlans.id, actionPlanId))
       .returning();
 
+    console.log('✅ Action plan updated successfully');
     return updatedPlan[0];
   } catch (error) {
-    console.error('Error updating action plan:', error);
+    console.error('❌ Error updating action plan:', error);
     throw error;
   }
 }
-
 // Verificar si todas las tareas están completadas
 async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
   try {
@@ -2538,7 +2680,8 @@ async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
       .where(eq(actionPlanTasks.actionPlanId, actionPlanId));
 
     if (tasks.length === 0) {
-      return true; // No hay tareas, consideramos que está "completado"
+      // Si no hay tareas, considerarlo como "completado"
+      return true;
     }
 
     return tasks.every(task => task.status === 'completed');
