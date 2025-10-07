@@ -1780,10 +1780,12 @@ app.post('/api/action-plans/:id/tasks', isAuthenticated, async (req: any, res) =
     const { title, description, dueDate, assigneeId } = req.body;
     const userId = req.user.id;
     
-    // Verificar que el usuario es responsable del plan
+    // Verificar que el usuario es responsable del plan O manager del centro
     const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
     if (!isResponsible) {
-      return res.status(403).json({ error: 'Solo el responsable puede agregar tareas' });
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden agregar tareas' 
+      });
     }
     
     if (!title || !dueDate) {
@@ -1904,10 +1906,12 @@ app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
     const { status } = req.body;
     const userId = req.user.id;
     
-    // Solo el responsable puede marcar el plan como completado
+    // Verificar que el usuario es responsable del plan O manager del centro
     const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
     if (!isResponsible) {
-      return res.status(403).json({ error: 'Solo el responsable puede completar el plan' });
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden completar el plan' 
+      });
     }
     
     // Verificar que todas las tareas estén completadas antes de completar el plan
@@ -1977,10 +1981,12 @@ app.delete('/api/action-plans/:id/tasks/:taskId', isAuthenticated, async (req: a
     const { id, taskId } = req.params;
     const userId = req.user.id;
     
-    // Solo el responsable puede eliminar tareas
+    // Verificar que el usuario es responsable del plan O manager del centro
     const isResponsible = await storage.isUserResponsibleForActionPlan(id, userId);
     if (!isResponsible) {
-      return res.status(403).json({ error: 'Solo el responsable puede eliminar tareas' });
+      return res.status(403).json({ 
+        error: 'Solo el responsable del plan o el manager del centro pueden eliminar tareas' 
+      });
     }
     
     await storage.deleteActionPlanTask(taskId);

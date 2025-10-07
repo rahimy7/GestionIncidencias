@@ -1,28 +1,31 @@
-// client/src/pages/admin/AdminUsersManagement.tsx
 import { useState } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
-  ArrowLeft, 
   Users, 
-  Plus, 
-  Search, 
-  Crown, 
   Shield, 
+  Crown, 
   User, 
-  AlertCircle
+  Search, 
+  AlertCircle,
+  Plus,
+  ArrowLeft,
+  Building2,
+  Store
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { EditUserDialog } from "@/components/EditUserDialog";
 import { DeleteUserDialog } from "@/components/DeleteUserDialog";
 import { ViewUserDialog } from "@/components/ViewUserDialog";
+import type { Center } from "@shared/schema";
 
-interface User {
+// Definir el tipo User localmente compatible con los componentes de diálogo
+interface UserType {
   id: string;
   email: string;
   firstName: string;
@@ -48,65 +51,73 @@ interface User {
 export function AdminUsersManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const [filterCenter, setFilterCenter] = useState("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Query para obtener usuarios
-  const { 
-    data: users = [], 
-    isLoading: usersLoading, 
-    error: usersError 
-  } = useQuery<User[]>({
+  // Obtener usuarios
+  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['/api/users'],
-    queryFn: async () => {
+    queryFn: async (): Promise<UserType[]> => {
       const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
-      }
-      
+      if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
-    },
+    }
   });
 
-  // Filtrar usuarios
+  // NUEVA QUERY: Obtener centros/tiendas
+  const { data: centers = [], isLoading: centersLoading } = useQuery({
+    queryKey: ['/api/centers'],
+    queryFn: async (): Promise<Center[]> => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/centers', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to fetch centers');
+      return response.json();
+    }
+  });
+
+  // Filtrar usuarios - ACTUALIZADO CON FILTRO DE CENTRO
   const filteredUsers = users.filter(user => {
-    const matchesSearch = searchTerm === '' || 
-      user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = !searchTerm || 
+      (user.firstName && user.firstName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (user.lastName && user.lastName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (user.department && user.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (user.departmentInfo && user.departmentInfo.name.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesFilter = filterType === 'all' || user.role === filterType;
     
-    return matchesSearch && matchesFilter;
+    // NUEVA LÓGICA: Filtro por centro/tienda
+    const matchesCenter = filterCenter === 'all' || user.centerId === filterCenter;
+    
+    return matchesSearch && matchesFilter && matchesCenter;
   });
 
   // Funciones auxiliares
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: string | null) => {
     switch (role) {
       case 'admin': return <Shield className="h-4 w-4 text-red-500" />;
       case 'manager': return <Crown className="h-4 w-4 text-yellow-500" />;
-      default: return <User className="h-4 w-4 text-blue-500" />;
+      case 'user': return <User className="h-4 w-4 text-blue-500" />;
+      default: return <User className="h-4 w-4 text-gray-500" />;
     }
   };
 
-  const getRoleLabel = (role: string) => {
+  const getRoleLabel = (role: string | null) => {
     switch (role) {
       case 'admin': return 'Administrador';
       case 'manager': return 'Gerente';
       case 'user': return 'Usuario';
-      default: return role;
+      default: return 'Sin rol';
     }
   };
 
-  const getRoleColor = (role: string) => {
+  const getRoleColor = (role: string | null) => {
     switch (role) {
       case 'admin': return 'bg-red-100 text-red-800';
       case 'manager': return 'bg-yellow-100 text-yellow-800';
@@ -115,12 +126,20 @@ export function AdminUsersManagement() {
     }
   };
 
-  const getAssignedTo = (user: User) => {
+  const getAssignedTo = (user: UserType) => {
     if (user.role === 'admin') return 'Sistema';
     if (user.center) return `${user.center.code} - ${user.center.name}`;
     if (user.departmentInfo) return `${user.departmentInfo.code} - ${user.departmentInfo.name}`;
     if (user.department) return `Área: ${user.department}`;
     return 'Sin asignar';
+  };
+
+  // NUEVA FUNCIÓN: Obtener ícono de tipo de centro
+  const getCenterIcon = (code: string) => {
+    if (code.startsWith('T') && !code.startsWith('TCD')) {
+      return <Store className="h-4 w-4 text-purple-500" />;
+    }
+    return <Building2 className="h-4 w-4 text-blue-500" />;
   };
 
   // Manejo de errores
@@ -177,7 +196,7 @@ export function AdminUsersManagement() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <Input
                   type="text"
@@ -186,8 +205,9 @@ export function AdminUsersManagement() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
+              
               <select 
-                className="px-3 py-2 border rounded-lg"
+                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
               >
@@ -195,6 +215,23 @@ export function AdminUsersManagement() {
                 <option value="admin">Administradores</option>
                 <option value="manager">Gerentes</option>
                 <option value="user">Usuarios</option>
+              </select>
+
+              {/* FILTRO DE TIENDA/CENTRO */}
+              <select 
+                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary min-w-[200px]"
+                value={filterCenter}
+                onChange={(e) => setFilterCenter(e.target.value)}
+                disabled={centersLoading}
+              >
+                <option value="all">Todas las tiendas</option>
+                {centers
+                  .sort((a, b) => a.code.localeCompare(b.code))
+                  .map((center) => (
+                    <option key={center.id} value={center.id}>
+                      {center.code} - {center.name}
+                    </option>
+                  ))}
               </select>
             </div>
           </CardContent>
@@ -267,7 +304,9 @@ export function AdminUsersManagement() {
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium mb-2">No se encontraron usuarios</h3>
                 <p className="text-muted-foreground">
-                  {searchTerm ? 'Intenta ajustar los filtros de búsqueda' : 'No hay usuarios registrados'}
+                  {searchTerm || filterType !== 'all' || filterCenter !== 'all' 
+                    ? 'Intenta ajustar los filtros de búsqueda' 
+                    : 'No hay usuarios registrados'}
                 </p>
               </div>
             ) : (
@@ -289,9 +328,9 @@ export function AdminUsersManagement() {
                         <td className="px-6 py-4">
                           <div>
                             <div className="font-medium text-gray-900">
-                              {user.firstName} {user.lastName}
+                              {user.firstName || ''} {user.lastName || ''}
                             </div>
-                            <div className="text-sm text-gray-500">{user.email}</div>
+                            <div className="text-sm text-gray-500">{user.email || 'Sin email'}</div>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -305,7 +344,7 @@ export function AdminUsersManagement() {
                         <td className="px-6 py-4 text-sm text-gray-900">{getAssignedTo(user)}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{user.location || 'No especificada'}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(user.createdAt).toLocaleDateString()}
+                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-DO') : 'N/A'}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">

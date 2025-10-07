@@ -743,13 +743,13 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
       </Card>
 
       {selectedActionPlanId && (
-        <ActionPlanDetail
-          actionPlanId={selectedActionPlanId}
-          isOpen={!!selectedActionPlanId}
-          onClose={() => setSelectedActionPlanId(null)}
-          userRole={currentUser?.id ? 'responsible' : 'participant'}
-        />
-      )}
+  <ActionPlanDetail
+    actionPlanId={selectedActionPlanId}
+    isOpen={!!selectedActionPlanId}
+    onClose={() => setSelectedActionPlanId(null)}
+    // ✅ Ya no se pasa userRole - el componente lo obtiene del backend
+  />
+)}
     </>
   );
 }

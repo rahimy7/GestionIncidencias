@@ -2108,10 +2108,10 @@ async getActionPlanWithDetails(actionPlanId: string, userId: string) {
   }
 }
 
-// Verificar si el usuario es responsable del plan
 async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Promise<boolean> {
   try {
-    const result = await db
+    // Verificar si es el responsable directo
+    const planResult = await db
       .select()
       .from(actionPlans)
       .where(
@@ -2122,7 +2122,28 @@ async isUserResponsibleForActionPlan(actionPlanId: string, userId: string): Prom
       )
       .limit(1);
 
-    return result.length > 0;
+    if (planResult.length > 0) {
+      return true;
+    }
+
+    // NUEVO: Verificar si es el manager del centro
+    const planInfo = await db
+      .select({
+        centerId: incidents.centerId,
+        centerManagerId: centers.managerId
+      })
+      .from(actionPlans)
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .where(eq(actionPlans.id, actionPlanId))
+      .limit(1);
+
+    if (planInfo.length > 0 && planInfo[0].centerManagerId === userId) {
+      console.log('✅ Center manager permission granted for action plan');
+      return true;
+    }
+
+    return false;
   } catch (error) {
     console.error('Error checking user responsibility:', error);
     return false;
@@ -2295,23 +2316,36 @@ async getActionPlanTasks(actionPlanId: string) {
 // Verificar si el usuario puede completar una tarea
 async canUserCompleteTask(taskId: string, userId: string): Promise<boolean> {
   try {
-    // El usuario puede completar si es el asignado a la tarea o el responsable del plan
+    // Verificar si es el asignado a la tarea o el responsable del plan
     const result = await db
-      .select()
+      .select({
+        taskAssigneeId: actionPlanTasks.assigneeId,
+        planAssigneeId: actionPlans.assigneeId,
+        centerId: incidents.centerId,
+        centerManagerId: centers.managerId
+      })
       .from(actionPlanTasks)
       .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
-      .where(
-        and(
-          eq(actionPlanTasks.id, taskId),
-          or(
-            eq(actionPlanTasks.assigneeId, userId),
-            eq(actionPlans.assigneeId, userId)
-          )
-        )
-      )
+      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+      .leftJoin(centers, eq(incidents.centerId, centers.id))
+      .where(eq(actionPlanTasks.id, taskId))
       .limit(1);
 
-    return result.length > 0;
+    if (result.length === 0) {
+      return false;
+    }
+
+    const task = result[0];
+
+    // Puede completar si es:
+    // 1. El asignado a la tarea
+    // 2. El responsable del plan
+    // 3. El manager del centro
+    return (
+      task.taskAssigneeId === userId ||
+      task.planAssigneeId === userId ||
+      task.centerManagerId === userId
+    );
   } catch (error) {
     console.error('Error checking task completion permission:', error);
     return false;

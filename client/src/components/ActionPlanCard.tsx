@@ -352,13 +352,13 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
 
       {/* Modal de detalles - Solo si existe el componente ActionPlanDetail */}
       {typeof ActionPlanDetail !== 'undefined' && (
-        <ActionPlanDetail
-          actionPlanId={actionPlan.id}
-          isOpen={isDetailOpen}
-          onClose={() => setIsDetailOpen(false)}
-          userRole={actionPlan.userRole === 'assignee' || actionPlan.userRole === 'responsible' ? 'responsible' : 'participant'}
-        />
-      )}
+  <ActionPlanDetail
+    actionPlanId={actionPlan.id}
+    isOpen={isDetailOpen}
+    onClose={() => setIsDetailOpen(false)}
+    // ✅ Ya no se pasa userRole - el componente lo obtiene del backend
+  />
+)}
     </>
   );
 }
