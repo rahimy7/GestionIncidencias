@@ -2152,6 +2152,15 @@ async getActionPlanDetails(actionPlanId: string, userId: string) {
       userRole = 'responsible';
       console.log('✅ User is responsible');
     } 
+
+     // 4. Es manager del centro (rol + centerId)
+    else if (
+      currentUser?.role === 'manager' && 
+      currentUser?.centerId === plan.incidents?.centerId
+    ) {
+      userRole = 'center_manager';
+      console.log('✅ User is center manager (role + centerId match)');
+    }
     // 2. Es reportador de la incidencia
     else if (plan.incidents?.reporterId === userId) {
       userRole = 'incident_reporter';
@@ -2162,14 +2171,7 @@ async getActionPlanDetails(actionPlanId: string, userId: string) {
       userRole = 'incident_assignee';
       console.log('✅ User is incident assignee');
     } 
-    // 4. Es manager del centro (rol + centerId)
-    else if (
-      currentUser?.role === 'manager' && 
-      currentUser?.centerId === plan.incidents?.centerId
-    ) {
-      userRole = 'center_manager';
-      console.log('✅ User is center manager (role + centerId match)');
-    }
+   
 
     // ✅ FIX: Filtrar participantes con usuarios null
     const validParticipants = participantsData
