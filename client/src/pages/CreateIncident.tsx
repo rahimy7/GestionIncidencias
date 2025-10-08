@@ -1,5 +1,6 @@
-// client/src/pages/CreateIncident.tsx - VERSIÓN CORREGIDA COMPLETA
-import { useState, useRef } from "react";
+// client/src/pages/CreateIncident.tsx - CON CONTROL DE CENTRO POR ROL
+
+import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,21 +12,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
-import { ArrowLeft, AlertTriangle, FileText, Upload, X, Building2, User, Calendar, Tag, MapPin } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Upload, X } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 
-// Schema que coincide exactamente con el backend insertIncidentSchema
 const incidentSchema = z.object({
-  title: z.string().min(1, "El título debe tener al menos 5 caracteres"),
+  title: z.string().min(1, "El título es requerido"),
   description: z.string(),
-  priority: z.enum(["low", "medium", "high", "critical"], {
-    required_error: "Debe seleccionar una prioridad",
-  }),
+  priority: z.enum(["low", "medium", "high", "critical"]),
   typeId: z.string().min(1, "Debe seleccionar un tipo de incidencia"),
   centerId: z.string().min(1, "Debe seleccionar un centro"),
-  // Solo campos que existen en el backend
 });
 
 type IncidentFormData = z.infer<typeof incidentSchema>;
@@ -34,10 +31,13 @@ export function CreateIncident() {
   const [, setLocation] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // ✅ NUEVO: Obtener información del usuario autenticado
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const userCenterId = user?.centerId;
 
   // Obtener centros disponibles
   const { data: centers = [], isLoading: centersLoading } = useQuery({
@@ -52,7 +52,7 @@ export function CreateIncident() {
     }
   });
 
-  // Obtener tipos de incidencia disponibles
+  // Obtener tipos de incidencia
   const { data: incidentTypes = [], isLoading: typesLoading } = useQuery({
     queryKey: ['/api/incident-types'],
     queryFn: async () => {
@@ -76,7 +76,18 @@ export function CreateIncident() {
     },
   });
 
-  // Función simplificada para subir archivos sin progreso complejo
+  // ✅ NUEVO: Preseleccionar centro si no es admin
+  useEffect(() => {
+    if (!isAdmin && userCenterId && centers.length > 0) {
+      // Verificar que el centro del usuario existe en la lista
+      const userCenter = centers.find((c: any) => c.id === userCenterId);
+      if (userCenter) {
+        form.setValue('centerId', userCenterId);
+        console.log('✅ Centro preseleccionado:', userCenter.name);
+      }
+    }
+  }, [isAdmin, userCenterId, centers, form]);
+
   const uploadFiles = async (incidentId: string): Promise<string[]> => {
     if (attachments.length === 0) return [];
 
@@ -100,11 +111,9 @@ export function CreateIncident() {
         if (response.ok) {
           const result = await response.json();
           uploadedUrls.push(result.url);
-        } else {
-          console.error(`Error uploading ${file.name}:`, response.status);
         }
       } catch (error) {
-        console.error(`Error uploading ${file.name}:`, error);
+        console.error('Error uploading file:', error);
       }
     }
 
@@ -112,41 +121,10 @@ export function CreateIncident() {
     return uploadedUrls;
   };
 
-  // Función para manejar archivos
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
-
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    const allowedTypes = [
-      'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
-      'application/pdf', 'text/plain'
-    ];
-    
-    const validFiles = files.filter(file => {
-      if (file.size > maxSize) {
-        toast({
-          title: "Archivo muy grande",
-          description: `${file.name} excede 10MB`,
-          variant: "destructive",
-        });
-        return false;
-      }
-      if (!allowedTypes.includes(file.type)) {
-        toast({
-          title: "Tipo no permitido",
-          description: `${file.name} no es válido`,
-          variant: "destructive",
-        });
-        return false;
-      }
-      return true;
-    });
-
-    setAttachments(prev => [...prev, ...validFiles]);
-    
-    if (event.target) {
-      event.target.value = '';
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setAttachments(prev => [...prev, ...newFiles]);
     }
   };
 
@@ -154,50 +132,31 @@ export function CreateIncident() {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  // Función principal de envío
   const onSubmit = async (data: IncidentFormData) => {
-    setIsSubmitting(true);
     try {
-      console.log("=== CREANDO INCIDENCIA ===");
-      console.log("Datos del formulario:", data);
-      console.log("Usuario actual:", user);
+      setIsSubmitting(true);
 
-      // 1. Crear incidencia con los campos exactos del backend
       const response = await fetch('/api/incidents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
-        body: JSON.stringify(data), // Solo enviar los campos del schema
+        body: JSON.stringify(data),
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Error response:", errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al crear incidencia');
       }
 
       const incident = await response.json();
-      console.log("Incidencia creada:", incident);
 
-      // 2. Subir archivos si los hay
+      // Subir archivos si los hay
       if (attachments.length > 0) {
-        console.log("Subiendo archivos...");
         const uploadedUrls = await uploadFiles(incident.id);
         
         if (uploadedUrls.length > 0) {
-          console.log("Actualizando incidencia con archivos:", uploadedUrls);
           await fetch(`/api/incidents/${incident.id}`, {
             method: 'PUT',
             headers: {
@@ -243,6 +202,11 @@ export function CreateIncident() {
     }
   };
 
+  // ✅ NUEVO: Obtener el nombre del centro del usuario para mostrarlo
+  const userCenterName = !isAdmin && userCenterId 
+    ? centers.find((c: any) => c.id === userCenterId)?.name 
+    : null;
+
   return (
     <Layout>
       <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -264,6 +228,19 @@ export function CreateIncident() {
           </div>
         </div>
 
+        {/* ✅ NUEVO: Alerta informativa para usuarios no admin */}
+        {!isAdmin && userCenterName && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Centro asignado:</strong> {userCenterName}
+              <br />
+              <span className="text-xs text-blue-600">
+                Las incidencias se reportarán automáticamente para este centro
+              </span>
+            </p>
+          </div>
+        )}
+
         {/* Formulario */}
         <Card>
           <CardHeader>
@@ -274,7 +251,7 @@ export function CreateIncident() {
           </CardHeader>
           <CardContent className="p-6">
             <Form {...form}>
-              <div className="space-y-8">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                 
                 {/* Información Básica */}
                 <div className="space-y-6">
@@ -305,7 +282,7 @@ export function CreateIncident() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Descripción Detallada *</FormLabel>
+                        <FormLabel>Descripción Detallada</FormLabel>
                         <FormControl>
                           <Textarea
                             placeholder="Describa el incidente con detalle: qué pasó, cuándo, dónde, personas involucradas..."
@@ -377,26 +354,54 @@ export function CreateIncident() {
                     />
                   </div>
 
+                  {/* ✅ MODIFICADO: Campo de centro con lógica condicional */}
                   <FormField
                     control={form.control}
                     name="centerId"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Centro de Trabajo *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting || centersLoading}>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          value={field.value} 
+                          disabled={isSubmitting || centersLoading || !isAdmin} // ✅ Deshabilitado si no es admin
+                        >
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={centersLoading ? "Cargando..." : "Seleccionar centro"} />
+                            <SelectTrigger className={!isAdmin ? "bg-gray-100 cursor-not-allowed" : ""}>
+                              <SelectValue 
+                                placeholder={
+                                  centersLoading 
+                                    ? "Cargando..." 
+                                    : !isAdmin && userCenterName 
+                                      ? userCenterName 
+                                      : "Seleccionar centro"
+                                } 
+                              />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {centers.map((center: any) => (
-                              <SelectItem key={center.id} value={center.id}>
-                                {center.name} ({center.code})
-                              </SelectItem>
-                            ))}
+                            {isAdmin ? (
+                              // ✅ Admin ve todos los centros
+                              centers.map((center: any) => (
+                                <SelectItem key={center.id} value={center.id}>
+                                  {center.name} ({center.code})
+                                </SelectItem>
+                              ))
+                            ) : (
+                              // ✅ No admin solo ve su centro (preseleccionado y deshabilitado)
+                              userCenterId && (
+                                <SelectItem value={userCenterId}>
+                                  {userCenterName}
+                                </SelectItem>
+                              )
+                            )}
                           </SelectContent>
                         </Select>
+                        {!isAdmin && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Centro asignado automáticamente según tu perfil
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -428,84 +433,54 @@ export function CreateIncident() {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isSubmitting || isUploading}
                       >
-                        <Upload className="h-4 w-4 mr-2" />
                         Seleccionar Archivos
                       </Button>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Imágenes, PDF o documentos de texto (máximo 10MB)
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Formatos aceptados: Imágenes, PDF, TXT (máx. 5MB por archivo)
                       </p>
                     </div>
                   </div>
 
+                  {/* Lista de archivos seleccionados */}
                   {attachments.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="font-medium">Archivos seleccionados ({attachments.length}):</h4>
-                      {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-sm font-medium">{file.name}</p>
-                              <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
-                            </div>
+                      <p className="text-sm font-medium">Archivos seleccionados:</p>
+                      <div className="space-y-2">
+                        {attachments.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <span className="text-sm truncate flex-1">{file.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeFile(index)}
+                              disabled={isSubmitting || isUploading}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeFile(index)}
-                            disabled={isSubmitting || isUploading}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Información del Reportero */}
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Reportado por
-                  </h3>
-                  <p className="text-sm">
-                    {user?.firstName} {user?.lastName} ({user?.email})
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date().toLocaleDateString('es-ES')} a las {new Date().toLocaleTimeString('es-ES')}
-                  </p>
-                </div>
-
-                {/* Botones */}
-                <div className="flex justify-end gap-4 pt-6 border-t">
+                {/* Botones de acción */}
+                <div className="flex gap-4 pt-6 border-t">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || isUploading}
+                    className="flex-1"
+                  >
+                    {isSubmitting ? 'Creando...' : isUploading ? 'Subiendo archivos...' : 'Crear Incidencia'}
+                  </Button>
                   <Link href="/">
                     <Button type="button" variant="outline" disabled={isSubmitting || isUploading}>
                       Cancelar
                     </Button>
                   </Link>
-                  <Button 
-                    type="button" 
-                    disabled={isSubmitting || isUploading} 
-                    className="min-w-[150px]"
-                    onClick={form.handleSubmit(onSubmit)}
-                  >
-                    {isSubmitting || isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        {isUploading ? 'Subiendo...' : 'Creando...'}
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="h-4 w-4 mr-2" />
-                        Crear Incidencia
-                      </>
-                    )}
-                  </Button>
                 </div>
-              </div>
+              </form>
             </Form>
           </CardContent>
         </Card>
