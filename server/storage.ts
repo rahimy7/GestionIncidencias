@@ -240,34 +240,52 @@ export class DatabaseStorage implements IStorage {
   } as IncidentWithDetails;
 }
 
-  async createIncident(incident: InsertIncident): Promise<Incident> {
-    // Generate incident number
-    const year = new Date().getFullYear();
-    const countResult = await db
-      .select({ count: count() })
-      .from(incidents)
-      .where(sql`EXTRACT(YEAR FROM created_at) = ${year}`);
-    
-    const incidentNumber = `INC-${year}-${String(countResult[0].count + 1).padStart(3, '0')}`;
-
-    const [newIncident] = await db
-      .insert(incidents)
-      .values({
-        ...incident,
-        incidentNumber,
-      } as any)
-      .returning();
-
-    // Add to history
-    await this.addIncidentHistory({
-      incidentId: newIncident.id,
-      userId: incident.reporterId,
-      action: "created",
-      description: "Incidencia reportada",
-    });
-
-    return newIncident;
+async createIncident(incident: InsertIncident): Promise<Incident> {
+  // Generate incident number - VERSIÓN CORREGIDA
+  const year = new Date().getFullYear();
+  
+  // ✅ SOLUCIÓN: Buscar el número más alto del año en lugar de contar
+  // Esto evita duplicados cuando se eliminan incidencias
+  const maxNumberResult = await db
+    .select({ incidentNumber: incidents.incidentNumber })
+    .from(incidents)
+    .where(sql`EXTRACT(YEAR FROM created_at) = ${year}`)
+    .orderBy(desc(incidents.incidentNumber))
+    .limit(1);
+  
+  let nextSequence = 1;
+  
+  if (maxNumberResult.length > 0 && maxNumberResult[0].incidentNumber) {
+    // Extraer el número de secuencia del formato INC-2025-0001
+    const lastNumber = maxNumberResult[0].incidentNumber;
+    const parts = lastNumber.split('-');
+    if (parts.length === 3) {
+      const lastSequence = parseInt(parts[2], 10);
+      nextSequence = lastSequence + 1;
+    }
   }
+  
+  // ✅ CAMBIO: De 3 dígitos (999) a 4 dígitos (9999)
+  const incidentNumber = `INC-${year}-${String(nextSequence).padStart(4, '0')}`;
+
+  const [newIncident] = await db
+    .insert(incidents)
+    .values({
+      ...incident,
+      incidentNumber,
+    } as any)
+    .returning();
+
+  // Add to history
+  await this.addIncidentHistory({
+    incidentId: newIncident.id,
+    userId: incident.reporterId,
+    action: "created",
+    description: "Incidencia reportada",
+  });
+
+  return newIncident;
+}
 
 async updateIncident(incidentId: string, updates: any, userId: string) {
   try {
