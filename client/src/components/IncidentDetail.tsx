@@ -50,19 +50,19 @@ interface Comment {
 }
 
 const statusColors = {
-  reported: "bg-blue-100 text-blue-800",
-  assigned: "bg-purple-100 text-purple-800",
-  in_progress: "bg-yellow-100 text-yellow-800",
-  pending_approval: "bg-orange-100 text-orange-800",
-  completed: "bg-green-100 text-green-800",
-  closed: "bg-gray-100 text-gray-800",
+  reportado: "bg-blue-100 text-blue-800",
+  asignado: "bg-purple-100 text-purple-800",
+  en_proceso: "bg-yellow-100 text-yellow-800",
+  pendiente_aprobacion: "bg-orange-100 text-orange-800",
+  completado: "bg-green-100 text-green-800",
+  cerrado: "bg-gray-100 text-gray-800",
 };
 
 const priorityColors = {
-  low: "bg-green-100 text-green-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  high: "bg-orange-100 text-orange-800",
-  critical: "bg-red-100 text-red-800",
+  baja: "bg-green-100 text-green-800",
+  media: "bg-yellow-100 text-yellow-800",
+  alta: "bg-orange-100 text-orange-800",
+  critica: "bg-red-100 text-red-800",
 };
 
 export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
@@ -647,14 +647,14 @@ return (
                     <div className="space-y-2">
                       <Button 
                         className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                        onClick={() => updateIncidentMutation.mutate({ status: "completed" })}
+                        onClick={() => updateIncidentMutation.mutate({ status: "completado" })}
                         disabled={updateIncidentMutation.isPending}
                       >
                         Marcar como Completada
                       </Button>
                       <Button 
                         className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={() => updateIncidentMutation.mutate({ status: "in_progress" })}
+                        onClick={() => updateIncidentMutation.mutate({ status: "en_proceso" })}
                         disabled={updateIncidentMutation.isPending}
                       >
                         Actualizar Estado

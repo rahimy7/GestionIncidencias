@@ -57,7 +57,7 @@ interface Task {
   title: string;
   description: string;
   dueDate: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pendiente' | 'en_proceso' | 'completado';
   assigneeId: string;
   assigneeName: string;
   evidence: EvidenceFile[];
@@ -86,7 +86,7 @@ interface ActionPlanDetails {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pendiente' | 'en_proceso' | 'completado';
   dueDate: string;
   createdAt: string;
   responsible: {
@@ -169,7 +169,7 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
   const completeTaskMutation = useMutation({
     mutationFn: async ({ taskId, files }: { taskId: string; files?: File[] }) => {
       const formData = new FormData();
-      formData.append('status', 'completed');
+      formData.append('status', 'completado');
       
       if (files && files.length > 0) {
         files.forEach(file => {
@@ -275,7 +275,7 @@ const canDeletePlan = actionPlan?.userRole === 'responsible' ||
     mutationFn: async () => {
       const response = await apiRequest(`/api/action-plans/${actionPlanId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'completed' }),
+        body: JSON.stringify({ status: 'completado' }),
       });
       if (!response.ok) throw new Error('Error completing action plan');
       return response.json();
@@ -299,18 +299,18 @@ const canDeletePlan = actionPlan?.userRole === 'responsible' ||
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'completado': return 'bg-green-100 text-green-800';
+      case 'en_proceso': return 'bg-blue-100 text-blue-800';
+      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'completed': return 'Completada';
-      case 'in_progress': return 'En Progreso';
-      case 'pending': return 'Pendiente';
+      case 'completado': return 'Completado';
+      case 'en_proceso': return 'En Progreso';
+      case 'pendiente': return 'Pendiente';
       default: return status;
     }
   };
@@ -337,7 +337,7 @@ const canDeletePlan = actionPlan?.userRole === 'responsible' ||
   };
 
   const isOverdue = (dueDate: string, status: string) => {
-    return status !== 'completed' && new Date(dueDate) < new Date();
+    return status !== 'completado' && new Date(dueDate) < new Date();
   };
 
   const canCompleteTask = (task: Task) => {
@@ -350,7 +350,7 @@ const canDeletePlan = actionPlan?.userRole === 'responsible' ||
   // CORRECCIÓN: Incluir center_manager en los permisos
   const canAddTasks = actionPlan?.userRole === 'responsible' || actionPlan?.userRole === 'center_manager';
   const canCompletePlan = (actionPlan?.userRole === 'responsible' || actionPlan?.userRole === 'center_manager') && 
-    actionPlan?.tasks.every(task => task.status === 'completed');
+    actionPlan?.tasks.every(task => task.status === 'completado');
 
   if (isLoading) {
     return (
@@ -412,7 +412,7 @@ return (
                 Completar Plan
               </Button>
             )}
-            {canDeletePlan && actionPlan.status !== 'completed' && (
+            {canDeletePlan && actionPlan.status !== 'completado' && (
               <Button
                 onClick={() => setShowDeleteDialog(true)}
                 disabled={deletePlanMutation.isPending}
@@ -499,7 +499,7 @@ return (
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">
-                  Tareas ({actionPlan.tasks.filter(t => t.status === 'completed').length}/{actionPlan.tasks.length})
+                  Tareas ({actionPlan.tasks.filter(t => t.status === 'completado').length}/{actionPlan.tasks.length})
                 </CardTitle>
                 {canAddTasks && (
                   <Button
@@ -557,12 +557,12 @@ return (
 
               {/* Lista de tareas */}
               {actionPlan.tasks.map((task) => (
-                <Card key={task.id} className={`${task.status === 'completed' ? 'bg-green-50' : ''}`}>
+                <Card key={task.id} className={`${task.status === 'completado' ? 'bg-green-50' : ''}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className={`font-medium ${task.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                          <h4 className={`font-medium ${task.status === 'completado' ? 'line-through text-muted-foreground' : ''}`}>
                             {task.title}
                           </h4>
                           <Badge className={getStatusColor(task.status)}>
@@ -623,7 +623,7 @@ return (
                       </div>
 
                       {/* Botones de acción */}
-                      {task.status !== 'completed' && canCompleteTask(task) && (
+                      {task.status !== 'completado' && canCompleteTask(task) && (
                         <Button
                           onClick={() => handleCompleteTask(task.id)}
                           size="sm"

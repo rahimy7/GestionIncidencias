@@ -30,8 +30,8 @@ type Incident = {
   incidentNumber: string;
   title: string;
   description: string;
-  status: "reported" | "in_progress" | "resolved" | string;
-  priority: "low" | "medium" | "high" | "critical" | string;
+  status: "reportado" | "en proceso" | "resuelto" | string;
+  priority: "baja" | "media" | "alta" | "critica" | string;
   centerId: string;
   typeId: string;
   createdAt: string;
@@ -269,12 +269,12 @@ export default function IncidentList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
-                  <SelectItem value="reported">Reportada</SelectItem>
-                  <SelectItem value="assigned">Asignada</SelectItem>
-                  <SelectItem value="in_progress">En Progreso</SelectItem>
-                  <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
-                  <SelectItem value="completed">Completada</SelectItem>
-                  <SelectItem value="closed">Cerrada</SelectItem>
+                  <SelectItem value="reportado">Reportada</SelectItem>
+                  <SelectItem value="asignado">Asignada</SelectItem>
+                  <SelectItem value="en_proceso">En Progreso</SelectItem>
+                  <SelectItem value="Pendiente_aprobacion">Pendiente Aprobación</SelectItem>
+                  <SelectItem value="completado">Completada</SelectItem>
+                  <SelectItem value="cerrado">Cerrada</SelectItem>
                 </SelectContent>
               </Select>
             </div>

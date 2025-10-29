@@ -9,8 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 
 interface DashboardStats {
   totalIncidents: number;
-  inProgress: number;
-  completed: number;
+  enproceso: number;
+  completado: number;
   avgResolutionTime: number;
 }
 
@@ -61,7 +61,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
                 <p className="text-3xl font-bold text-warning" data-testid="text-in-progress">
-                  {statsLoading ? "..." : stats?.inProgress || 0}
+                  {statsLoading ? "..." : stats?.enproceso || 0}
                 </p>
               </div>
               <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -78,7 +78,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Completadas</p>
                 <p className="text-3xl font-bold text-secondary" data-testid="text-completed">
-                  {statsLoading ? "..." : stats?.completed || 0}
+                  {statsLoading ? "..." : stats?.completado || 0}
                 </p>
               </div>
               <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -86,7 +86,7 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {stats?.totalIncidents ? Math.round((stats.completed / stats.totalIncidents) * 100) : 0}% tasa de resolución
+              {stats?.totalIncidents ? Math.round((stats.completado / stats.totalIncidents) * 100) : 0}% tasa de resolución
             </p>
           </CardContent>
         </Card>

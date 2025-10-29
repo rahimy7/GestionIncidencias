@@ -35,7 +35,7 @@ interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  status: 'pendiente' | 'en_proceso' | 'completado' | 'retrasado';
   assigneeId: string;
   dueDate: Date | string;
   completedAt?: Date | null | string;
@@ -84,7 +84,7 @@ interface IncidentWithActionPlans {
     id: string;
     title: string;
     description: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+    status: 'pendiente' | 'en_proceso' | 'completado' | 'retrasado';
     dueDate: string | Date;
     completedAt?: string | Date | null;
     assigneeId: string;
@@ -378,20 +378,20 @@ const PlanParticipantsManager = ({
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'pending': return 'bg-gray-100 text-gray-800';
-    case 'in_progress': return 'bg-blue-100 text-blue-800';
-    case 'completed': return 'bg-green-100 text-green-800';
-    case 'overdue': return 'bg-red-100 text-red-800';
+    case 'pendiente': return 'bg-gray-100 text-gray-800';
+    case 'en_proceso': return 'bg-blue-100 text-blue-800';
+    case 'completado': return 'bg-green-100 text-green-800';
+    case 'retrasado': return 'bg-red-100 text-red-800';
     default: return 'bg-gray-100 text-gray-800';
   }
 };
 
 const getStatusText = (status: string) => {
   switch (status) {
-    case 'pending': return 'Pendiente';
-    case 'in_progress': return 'En Progreso';
-    case 'completed': return 'Completado';
-    case 'overdue': return 'Vencido';
+    case 'pendiente': return 'Pendiente';
+    case 'en_proceso': return 'En Progreso';
+    case 'completado': return 'Completado';
+    case 'retrasado': return 'Vencido';
     default: return status;
   }
 };
@@ -410,7 +410,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
     assigneeId: '',
     dueDate: '',
     startDate: '',
-    priority: 'medium',
+    priority: 'media',
     participants: [] as string[]
   });
   
@@ -495,7 +495,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
         assigneeId: '',
         dueDate: '',
         startDate: '',
-        priority: 'medium',
+        priority: 'media',
         participants: []
       });
       
@@ -530,7 +530,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
   }, [showNewPlanForm, refetchParticipants, queryClient, incident.id]);
 
   const availableParticipants = freshParticipants || incident.participants || [];
-  const completedPlans = actionPlans.filter((p: ActionPlan) => p.status === 'completed').length;
+  const completedPlans = actionPlans.filter((p: ActionPlan) => p.status === 'completado').length;
   const totalPlans = actionPlans.length;
   const progressPercentage = totalPlans > 0 ? Math.round((completedPlans / totalPlans) * 100) : 0;
 
@@ -567,14 +567,14 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
             <div className="space-y-4">
               {actionPlans.length > 0 ? (
                 actionPlans.map((plan: ActionPlan) => {
-                  const isOverdue = plan.status !== 'completed' && new Date(plan.dueDate) < new Date();
+                  const isOverdue = plan.status !== 'completado' && new Date(plan.dueDate) < new Date();
                   
                   return (
                     <ActionPlanCard
                       key={plan.id}
                       actionPlan={{
                         ...plan,
-                        status: isOverdue ? 'overdue' : plan.status,
+                        status: isOverdue ? 'retrasado' : plan.status,
                         dueDate: typeof plan.dueDate === 'string' ? plan.dueDate : plan.dueDate.toISOString(),
                         completedAt: plan.completedAt ? (typeof plan.completedAt === 'string' ? plan.completedAt : plan.completedAt.toISOString()) : null,
                         incident: {
@@ -673,25 +673,25 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="low">
+                            <SelectItem value="baja">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                 Baja
                               </div>
                             </SelectItem>
-                            <SelectItem value="medium">
+                            <SelectItem value="media">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
                                 Media
                               </div>
                             </SelectItem>
-                            <SelectItem value="high">
+                            <SelectItem value="alta">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
                                 Alta
                               </div>
                             </SelectItem>
-                            <SelectItem value="critical">
+                            <SelectItem value="critica">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-red-500"></div>
                                 Crítica

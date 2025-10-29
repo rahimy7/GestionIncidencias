@@ -21,7 +21,7 @@ const incidentSchema = z.object({
   description: z.string().min(1, "La descripción es requerida"),
   centerId: z.string().min(1, "El centro es requerido"),
   typeId: z.string().min(1, "El tipo es requerido"),
-  priority: z.enum(["low", "medium", "high", "critical"]),
+  priority: z.enum(["baja", "media", "alta", "critica"]),
 });
 
 type IncidentFormData = z.infer<typeof incidentSchema>;
@@ -34,7 +34,7 @@ export function IncidentForm() {
   const form = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
     defaultValues: {
-      priority: "medium",
+      priority: "media",
     },
   });
 

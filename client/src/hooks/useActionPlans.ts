@@ -7,7 +7,7 @@ export interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pendiente' | 'en_proceso' | 'completado';
   dueDate: string;
   createdAt: string;
   userRole: 'assignee' | 'participant' | 'responsible';
@@ -56,11 +56,11 @@ export function useActionPlans() {
   // Estadísticas calculadas
   const statistics = actionPlans ? {
     total: actionPlans.length,
-    pending: actionPlans.filter(p => p.status === 'pending').length,
-    inProgress: actionPlans.filter(p => p.status === 'in_progress').length,
-    completed: actionPlans.filter(p => p.status === 'completed').length,
-    overdue: actionPlans.filter(p => 
-      p.status !== 'completed' && new Date(p.dueDate) < new Date()
+    pendiente: actionPlans.filter(p => p.status === 'pendiente').length,
+    enproceso: actionPlans.filter(p => p.status === 'en_proceso').length,
+    completado: actionPlans.filter(p => p.status === 'completado').length,
+    retrasado: actionPlans.filter(p => 
+      p.status !== 'completado' && new Date(p.dueDate) < new Date()
     ).length,
     asResponsible: actionPlans.filter(p => 
       p.userRole === 'assignee' || p.userRole === 'responsible'
@@ -68,10 +68,10 @@ export function useActionPlans() {
     asParticipant: actionPlans.filter(p => p.userRole === 'participant').length,
   } : {
     total: 0,
-    pending: 0,
-    inProgress: 0,
-    completed: 0,
-    overdue: 0,
+    pendiente: 0,
+    enproceso: 0,
+    completado: 0,
+    retrasado: 0,
     asResponsible: 0,
     asParticipant: 0,
   };

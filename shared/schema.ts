@@ -35,28 +35,28 @@ export const userRoleEnum = pgEnum("user_role", [
 
 // Incident status enum
 export const incidentStatusEnum = pgEnum("incident_status", [
-  "reported",
-  "assigned", 
-  "in_progress",
-  "pending_approval",
-  "completed",
-  "closed"
+  "reportado",
+  "asignado", 
+  "en_proceso",
+  "pendiente_aprobacion",
+  "completado",
+  "cerrado"
 ]);
 
 // Incident priority enum
 export const incidentPriorityEnum = pgEnum("incident_priority", [
-  "low",
-  "medium", 
-  "high",
-  "critical"
+  "baja",
+  "media", 
+  "alta",
+  "critica"
 ]);
 
 // Action plan status enum
 export const actionStatusEnum = pgEnum("action_status", [
-  "pending",
-  "in_progress", 
-  "completed",
-  "overdue"
+  "pendiente",
+  "en_proceso", 
+  "completado",
+  "retrasado"
 ]);
 
 // Users table
@@ -127,8 +127,8 @@ export const incidents = pgTable("incidents", {
   incidentNumber: varchar("incident_number").unique().notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description"),
-  status: incidentStatusEnum("status").default("reported").notNull(),
-  priority: incidentPriorityEnum("priority").default("medium").notNull(),
+  status: incidentStatusEnum("status").default("reportado").notNull(),
+  priority: incidentPriorityEnum("priority").default("media").notNull(),
   
   // Relationships
   reporterId: varchar("reporter_id").references(() => users.id).notNull(),
@@ -166,8 +166,8 @@ export const actionPlans = pgTable("action_plans", {
   incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: "cascade" }).notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description").notNull(),
-  status: actionStatusEnum("status").default("pending").notNull(),
-  priority: incidentPriorityEnum("priority").default("medium").notNull(),
+  status: actionStatusEnum("status").default("pendiente").notNull(),
+  priority: incidentPriorityEnum("priority").default("media").notNull(),
   progress: integer('progress').default(0),
   
   // Assignment
@@ -213,7 +213,7 @@ export const actionPlanTasks = pgTable('action_plan_tasks', {
   title: text('title').notNull(),
   description: text('description').default(''),
   dueDate: timestamp('due_date').notNull(),
-  status: text('status').notNull().default('pending'), // pending, in_progress, completed
+  status: text('status').notNull().default('pendiente'), // pending, en_proceso, completed
   assigneeId: text('assignee_id').notNull().references(() => users.id),
   createdBy: text('created_by').notNull().references(() => users.id),
   completedAt: timestamp('completed_at'),
@@ -522,7 +522,7 @@ export const insertActionPlanSchema = z.object({
   incidentId: z.string().uuid("ID de incidencia inválido"),
   title: z.string().min(1, "El título es requerido").max(500, "El título es muy largo"),
   description: z.string().max(2000, "La descripción es muy larga").default(""),
-  status: z.enum(["pending", "in_progress", "completed", "overdue"]).default("pending"),
+  status: z.enum(["pendiente", "en_proceso", "completado", "retrasado"]).default("pendiente"),
   assigneeId: z.string().min(1, "El responsable es requerido"),
   departmentId: z.string().nullable().optional(),
   dueDate: z.union([
@@ -536,7 +536,7 @@ export const insertActionPlanSchema = z.object({
 export const updateActionPlanSchema = z.object({
   title: z.string().min(1, "El título es requerido").max(500, "El título es muy largo").optional(),
   description: z.string().min(1, "La descripción es requerida").optional(),
-  status: z.enum(["pending", "in_progress", "completed", "overdue"]).optional(),
+  status: z.enum(["pendiente", "en_proceso", "completado", "retrasado"]).optional(),
   assigneeId: z.string().min(1, "El responsable es requerido").optional(),
   departmentId: z.string().optional(),
   dueDate: z.union([

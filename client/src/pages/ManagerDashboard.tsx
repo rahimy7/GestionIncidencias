@@ -98,25 +98,25 @@ interface CenterInfo {
 
 interface CenterStats {
   totalIncidents: number;
-  inProgress: number;
-  critical: number;
-  completed: number;
-  reported: number;
-  assigned: number;
+  enproceso: number;
+  critica: number;
+  completado: number;
+  reportado: number;
+  asignado: number;
   resolutionRate: number;
   actionPlans: {
     total: number;
-    pending: number;
-    inProgress: number;
-    completed: number;
-    overdue: number;
+    pendiente: number;
+    enproceso: number;
+    completado: number;
+    retrasado: number;
   };
   tasks: {
     total: number;
-    pending: number;
-    inProgress: number;
-    completed: number;
-    overdue: number;
+    pendiente: number;
+    enproceso: number;
+    completado: number;
+    retrasado: number;
   };
   trends: Array<{
     month: string;
@@ -137,7 +137,7 @@ interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  status: 'pendiente' | 'en_proceso' | 'completado' | 'retrasado';
   dueDate: string;
   createdAt: string;
   completedAt?: string;
@@ -335,36 +335,36 @@ const filteredActionPlans = useMemo(() => {
 // Funciones de utilidad para planes de acción
 const getActionPlanStatusBadgeVariant = (status: string) => {
   switch (status) {
-    case 'completed': return 'default';
-    case 'in_progress': return 'secondary';
-    case 'pending': return 'outline';
-    case 'overdue': return 'destructive';
+    case 'completado': return 'default';
+    case 'en_proceso': return 'secondary';
+    case 'pendiente': return 'outline';
+    case 'retrasado': return 'destructive';
     default: return 'outline';
   }
 };
 
 const getActionPlanStatusText = (status: string) => {
   switch (status) {
-    case 'pending': return 'Pendiente';
-    case 'in_progress': return 'En Progreso';
-    case 'completed': return 'Completado';
-    case 'overdue': return 'Atrasado';
+    case 'pendiente': return 'Pendiente';
+    case 'en_proceso': return 'En Progreso';
+    case 'completado': return 'Completado';
+    case 'retrasado': return 'Atrasado';
     default: return status;
   }
 };
 
 const getActionPlanStatusColor = (status: string) => {
   switch (status) {
-    case 'pending': return 'text-gray-600';
-    case 'in_progress': return 'text-blue-600';
+    case 'pendiente': return 'text-gray-600';
+    case 'en_proceso': return 'text-blue-600';
     case 'completed': return 'text-green-600';
-    case 'overdue': return 'text-red-600';
+    case 'retrasado': return 'text-red-600';
     default: return 'text-gray-600';
   }
 };
 
-const isOverdue = (dueDate: string, status: string) => {
-  return status !== 'completed' && new Date(dueDate) < new Date();
+const isretrasado = (dueDate: string, status: string) => {
+  return status !== 'completado'&& new Date(dueDate) < new Date();
 };
 
   // Procesar y filtrar incidencias
@@ -452,7 +452,7 @@ const isOverdue = (dueDate: string, status: string) => {
     ['reported', 'assigned'].includes(i.status)
   );
   const inProgressIncidents = allIncidents.filter((i: Incident) => 
-    i.status === 'in_progress'
+    i.status === 'en_proceso'
   );
   const completedIncidents = allIncidents.filter((i: Incident) => 
     i.status === 'completed'
@@ -465,7 +465,7 @@ const isOverdue = (dueDate: string, status: string) => {
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'completed': return 'default';
-      case 'in_progress': return 'secondary';
+      case 'en_proceso': return 'secondary';
       case 'assigned': return 'outline';
       case 'reported': return 'outline';
       case 'pending_approval': return 'secondary';
@@ -476,10 +476,10 @@ const isOverdue = (dueDate: string, status: string) => {
   // Función para obtener el color del badge según la prioridad
   const getPriorityBadgeColor = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-200';
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low': return 'bg-green-100 text-green-800 border-green-200';
+      case 'critica': return 'bg-red-100 text-red-800 border-red-200';
+      case 'alta': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'media': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'baja': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -489,7 +489,7 @@ const isOverdue = (dueDate: string, status: string) => {
     switch (status) {
       case 'reported': return 'Reportada';
       case 'assigned': return 'Asignada';
-      case 'in_progress': return 'En Progreso';
+      case 'en_proceso': return 'En Progreso';
       case 'pending_approval': return 'Pendiente Aprobación';
       case 'completed': return 'Completada';
       default: return status;
@@ -499,10 +499,10 @@ const isOverdue = (dueDate: string, status: string) => {
   // Función para obtener texto de la prioridad
   const getPriorityText = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'Crítica';
-      case 'high': return 'Alta';
-      case 'medium': return 'Media';
-      case 'low': return 'Baja';
+      case 'critica': return 'Crítica';
+      case 'alta': return 'Alta';
+      case 'media': return 'Media';
+      case 'baja': return 'Baja';
       default: return priority;
     }
   };
@@ -760,7 +760,7 @@ const isOverdue = (dueDate: string, status: string) => {
                         <SelectItem value="all">Todos los estados</SelectItem>
                         <SelectItem value="reported">Reportada</SelectItem>
                         <SelectItem value="assigned">Asignada</SelectItem>
-                        <SelectItem value="in_progress">En Progreso</SelectItem>
+                        <SelectItem value="en_proceso">En Progreso</SelectItem>
                         <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
                         <SelectItem value="completed">Completada</SelectItem>
                       </SelectContent>
@@ -827,14 +827,14 @@ const isOverdue = (dueDate: string, status: string) => {
                 </CardContent>
               </Card>
 
-              <Card className="cursor-pointer" onClick={() => setStatusFilter("in_progress")}>
+              <Card className="cursor-pointer" onClick={() => setStatusFilter("en_proceso")}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <Clock className="h-6 w-6 text-yellow-600" />
                     <div>
                       <p className="text-sm text-muted-foreground">En Progreso</p>
                       <p className="text-xl font-bold">
-                        {filteredIncidents.filter(i => i.status === 'in_progress').length}
+                        {filteredIncidents.filter(i => i.status === 'en_proceso').length}
                       </p>
                     </div>
                   </div>
@@ -1092,9 +1092,9 @@ const isOverdue = (dueDate: string, status: string) => {
             <SelectContent>
               <SelectItem value="all">Todos los estados</SelectItem>
               <SelectItem value="pending">Pendiente</SelectItem>
-              <SelectItem value="in_progress">En Progreso</SelectItem>
+              <SelectItem value="en_proceso">En Progreso</SelectItem>
               <SelectItem value="completed">Completado</SelectItem>
-              <SelectItem value="overdue">Atrasado</SelectItem>
+              <SelectItem value="retrasado">Atrasado</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1144,42 +1144,42 @@ const isOverdue = (dueDate: string, status: string) => {
       </CardContent>
     </Card>
 
-    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("in_progress")}>
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("en_proceso")}>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <Activity className="h-6 w-6 text-yellow-600" />
           <div>
             <p className="text-sm text-muted-foreground">En Progreso</p>
             <p className="text-xl font-bold">
-              {filteredActionPlans.filter(p => p.status === 'in_progress').length}
+              {filteredActionPlans.filter(p => p.status === 'en_proceso').length}
             </p>
           </div>
         </div>
       </CardContent>
     </Card>
 
-    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("overdue")}>
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("retrasado")}>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-6 w-6 text-red-600" />
           <div>
             <p className="text-sm text-muted-foreground">Atrasados</p>
             <p className="text-xl font-bold">
-              {filteredActionPlans.filter(p => isOverdue(p.dueDate, p.status)).length}
+              {filteredActionPlans.filter(p => isretrasado(p.dueDate, p.status)).length}
             </p>
           </div>
         </div>
       </CardContent>
     </Card>
 
-    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("completed")}>
+    <Card className="cursor-pointer" onClick={() => setActionPlanStatusFilter("completado")}>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <CheckCircle2 className="h-6 w-6 text-green-600" />
           <div>
             <p className="text-sm text-muted-foreground">Completados</p>
             <p className="text-xl font-bold">
-              {filteredActionPlans.filter(p => p.status === 'completed').length}
+              {filteredActionPlans.filter(p => p.status === 'completado').length}
             </p>
           </div>
         </div>
@@ -1246,7 +1246,7 @@ const isOverdue = (dueDate: string, status: string) => {
                       {getActionPlanStatusText(plan.status)}
                     </Badge>
                     
-                    {isOverdue(plan.dueDate, plan.status) && (
+                    {isretrasado(plan.dueDate, plan.status) && (
                       <Badge variant="destructive" className="text-xs">
                         Atrasado
                       </Badge>
@@ -1506,7 +1506,7 @@ const isOverdue = (dueDate: string, status: string) => {
                     <AlertTriangle className="h-5 w-5 text-red-600" />
                     <div>
                       <p className="font-medium text-red-800">
-                        {criticalIncidents.length} incidencia(s) crítica(s) requieren atención inmediata
+                        {criticalIncidents.length} incidencia(s) critica(s) requieren atención inmediata
                       </p>
                       <p className="text-sm text-red-600">
                         Revisa y asigna recursos para resolver estas incidencias prioritarias.
@@ -1515,12 +1515,12 @@ const isOverdue = (dueDate: string, status: string) => {
                   </div>
                 )}
 
-                {(centerStats?.actionPlans?.overdue || 0) > 0 && (
+                {(centerStats?.actionPlans?.retrasado || 0) > 0 && (
                   <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                     <Clock className="h-5 w-5 text-orange-600" />
                     <div>
                       <p className="font-medium text-orange-800">
-                        {centerStats?.actionPlans?.overdue} plan(es) de acción atrasado(s)
+                        {centerStats?.actionPlans?.retrasado} plan(es) de acción retrasado(s)
                       </p>
                       <p className="text-sm text-orange-600">
                         Contacta a los responsables para acelerar la implementación.

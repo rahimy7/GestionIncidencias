@@ -376,7 +376,7 @@ export const actionPlanCreateSchema = z.object({
 export const actionPlanUpdateSchema = actionPlanCreateSchema.partial();
 
 export const actionPlanStatusSchema = z.object({
-  status: z.enum(['pending', 'in_progress', 'completed', 'overdue'], {
+  status: z.enum(['pending', 'en_proceso', 'completed', 'overdue'], {
     required_error: "Estado requerido",
     invalid_type_error: "Estado inválido"
   })
@@ -519,7 +519,7 @@ cat > temp_storage_methods.ts << 'EOF'
    */
   async updateActionPlanStatus(
     id: string, 
-    status: 'pending' | 'in_progress' | 'completed' | 'overdue',
+    status: 'pending' | 'en_proceso' | 'completado'| 'overdue',
     userId: string
   ): Promise<ActionPlan> {
     const updates: Partial<InsertActionPlan> = {
@@ -603,7 +603,7 @@ cat > temp_interface_methods.ts << 'EOF'
   // ✅ NUEVOS MÉTODOS PARA ACTION PLANS
   updateActionPlanStatus(
     id: string, 
-    status: 'pending' | 'in_progress' | 'completed' | 'overdue',
+    status: 'pending' | 'en_proceso' | 'completado'| 'overdue',
     userId: string
   ): Promise<ActionPlan>;
   canUserCreateActionPlan(incidentId: string, userId: string): Promise<boolean>;
@@ -734,7 +734,7 @@ app.patch("/api/action-plans/:id/status", isAuthenticated, async (req: any, res)
     const userId = req.user.id;
 
     // Validar estado
-    const validStatuses = ['pending', 'in_progress', 'completed', 'overdue'];
+    const validStatuses = ['pending', 'en_proceso', 'completed', 'overdue'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ 
         message: "Estado inválido" 
@@ -986,7 +986,7 @@ PATCH /api/action-plans/:id/status
 **Body:**
 ```json
 {
-  "status": "in_progress" // pending | in_progress | completed | overdue
+  "status": "en_proceso" // pending | en_proceso | completed | overdue
 }
 ```
 
@@ -1033,7 +1033,7 @@ GET /api/action-plans/my-dashboard
 
 ### 📧 Automáticas
 - ✅ Creación de plan → Email al assignee
-- ✅ Plan vencido → Alerta crítica
+- ✅ Plan vencido → Alerta critica
 - ✅ Plan próximo a vencer → Recordatorio
 
 ### ⏰ Tareas Programadas
@@ -1071,7 +1071,7 @@ curl -X POST http://localhost:5000/api/incidents/incident-123/action-plans \
 curl -X PATCH http://localhost:5000/api/action-plans/plan-789/status \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}'
+  -d '{"status": "en_proceso"}'
 ```
 
 ### Ver Dashboard Personal
@@ -1135,7 +1135,7 @@ echo "🔄 Para probar actualización de estado, usa:"
 echo "curl -X PATCH \"$BASE_URL/api/action-plans/PLAN_ID/status\" \\"
 echo "  -H \"Authorization: Bearer $TOKEN\" \\"
 echo "  -H \"Content-Type: application/json\" \\"
-echo "  -d '{\"status\": \"in_progress\"}'"
+echo "  -d '{\"status\": \"en_proceso\"}'"
 
 echo ""
 echo "✅ Pruebas configuradas. Reemplaza los IDs con valores reales."

@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 const incidentSchema = z.object({
   title: z.string().min(1, "El título es requerido"),
   description: z.string(),
-  priority: z.enum(["low", "medium", "high", "critical"]),
+  priority: z.enum(["baja", "media", "alta", "critica"]),
   typeId: z.string().min(1, "Debe seleccionar un tipo de incidencia"),
   centerId: z.string().min(1, "Debe seleccionar un centro"),
 });
@@ -70,7 +70,7 @@ export function CreateIncident() {
     defaultValues: {
       title: "",
       description: "",
-      priority: "medium",
+      priority: "media",
       typeId: "",
       centerId: "",
     },
@@ -194,10 +194,10 @@ export function CreateIncident() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'text-red-600 border-red-300 bg-red-50';
-      case 'high': return 'text-orange-600 border-orange-300 bg-orange-50';
-      case 'medium': return 'text-yellow-600 border-yellow-300 bg-yellow-50';
-      case 'low': return 'text-green-600 border-green-300 bg-green-50';
+      case 'critica': return 'text-red-600 border-red-300 bg-red-50';
+      case 'alta': return 'text-orange-600 border-orange-300 bg-orange-50';
+      case 'media': return 'text-yellow-600 border-yellow-300 bg-yellow-50';
+      case 'baja': return 'text-green-600 border-green-300 bg-green-50';
       default: return 'text-gray-600 border-gray-300 bg-gray-50';
     }
   };
@@ -317,10 +317,10 @@ export function CreateIncident() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="low" className="text-green-600">Baja</SelectItem>
-                              <SelectItem value="medium" className="text-yellow-600">Media</SelectItem>
-                              <SelectItem value="high" className="text-orange-600">Alta</SelectItem>
-                              <SelectItem value="critical" className="text-red-600">Crítica</SelectItem>
+                              <SelectItem value="baja" className="text-green-600">Baja</SelectItem>
+                              <SelectItem value="media" className="text-yellow-600">Media</SelectItem>
+                              <SelectItem value="alta" className="text-orange-600">Alta</SelectItem>
+                              <SelectItem value="critica" className="text-red-600">Crítica</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />

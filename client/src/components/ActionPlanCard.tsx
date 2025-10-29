@@ -13,7 +13,7 @@ interface ActionPlan {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  status: 'pendiente' | 'en_proceso' | 'completado' | 'retrasado';
   dueDate: string;
   completedAt?: string | null;
   assignee: {
@@ -61,54 +61,54 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'overdue': return 'bg-red-100 text-red-800';
+      case 'completada': return 'bg-green-100 text-green-800';
+      case 'en_proceso': return 'bg-blue-100 text-blue-800';
+      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
+      case 'retrasado': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getStatusText = (status: string) => {
     const statusMap: Record<string, string> = {
-      'pending': 'Pendiente',
-      'in_progress': 'En Progreso',
-      'completed': 'Completado',
-      'overdue': 'Vencido'
+      'pendiente': 'Pendiente',
+      'en_proceso': 'En Progreso',
+      'completado': 'Completado',
+      'retrasado': 'Vencido'
     };
     return statusMap[status] || status;
   };
 
   const getPriorityIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="h-4 w-4" />;
-      case 'in_progress': return <Clock className="h-4 w-4" />;
+      case 'completado': return <CheckCircle2 className="h-4 w-4" />;
+      case 'en_proceso': return <Clock className="h-4 w-4" />;
       default: return <AlertCircle className="h-4 w-4" />;
     }
   };
 
   const isOverdue = () => {
-    if (actionPlan.status === 'completed') return false;
+    if (actionPlan.status === 'completado') return false;
     return new Date(actionPlan.dueDate) < new Date();
   };
 
   const canUpdateStatus = () => {
     // Solo el responsable puede cambiar el estado
-    return (actionPlan.userRole === 'assignee' || actionPlan.userRole === 'responsible') && actionPlan.status !== 'completed';
+    return (actionPlan.userRole === 'assignee' || actionPlan.userRole === 'responsible') && actionPlan.status !== 'completado';
   };
 
   const getNextStatus = () => {
     switch (actionPlan.status) {
-      case 'pending': return 'in_progress';
-      case 'in_progress': return 'completed';
+      case 'pendiente': return 'en_proceso';
+      case 'en_proceso': return 'completado';
       default: return null;
     }
   };
 
   const getNextStatusText = () => {
     switch (actionPlan.status) {
-      case 'pending': return 'Iniciar';
-      case 'in_progress': return 'Completar';
+      case 'pendiente': return 'Iniciar';
+      case 'en_proceso': return 'Completar';
       default: return null;
     }
   };
@@ -123,7 +123,7 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
         method: 'PUT',
         body: JSON.stringify({
           status: nextStatus,
-          completedAt: nextStatus === 'completed' ? new Date().toISOString() : null
+          completedAt: nextStatus === 'completado' ? new Date().toISOString() : null
         })
       });
 
@@ -302,13 +302,13 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
           </div>
 
           {/* Indicador de días restantes o completado */}
-          {actionPlan.status === 'completed' && actionPlan.completedAt && (
+          {actionPlan.status === 'completado' && actionPlan.completedAt && (
             <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
               Completado: {new Date(actionPlan.completedAt).toLocaleDateString('es-ES')}
             </div>
           )}
 
-          {!isOverdue() && actionPlan.status !== 'completed' && (
+          {!isOverdue() && actionPlan.status !== 'completado' && (
             <div className="text-xs text-muted-foreground">
               {(() => {
                 const today = new Date();

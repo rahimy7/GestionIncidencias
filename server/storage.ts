@@ -627,9 +627,9 @@ async getDashboardStats(userId?: string) {
   const statsQuery = await db
     .select({
       total: count(),
-      inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
-      completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
-      avgDays: avg(sql`CASE WHEN status = 'completed' AND actual_resolution_date IS NOT NULL 
+      inProgress: count(sql`CASE WHEN status = 'en_proceso' THEN 1 END`),
+      completed: count(sql`CASE WHEN status = 'completado'THEN 1 END`),
+      avgDays: avg(sql`CASE WHEN status = 'completado'AND actual_resolution_date IS NOT NULL 
         THEN EXTRACT(day FROM actual_resolution_date - created_at) END`)
     })
     .from(incidents)
@@ -656,12 +656,12 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
     const [incidentStats] = await db
       .select({
         total: count(),
-        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
-        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
-        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
-        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
-        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
-        avgResolutionDays: avg(sql`CASE WHEN status = 'completed' AND actual_resolution_date IS NOT NULL 
+        enproceso: count(sql`CASE WHEN status = 'en_proceso' THEN 1 END`),
+        critica: count(sql`CASE WHEN priority = 'critica' AND status != 'completado' THEN 1 END`),
+        completado: count(sql`CASE WHEN status = 'completado' THEN 1 END`),
+        reportado: count(sql`CASE WHEN status = 'reportado' THEN 1 END`),
+        asignado: count(sql`CASE WHEN status = 'asignado' THEN 1 END`),
+        avgResolutionDays: avg(sql`CASE WHEN status = 'completado' AND actual_resolution_date IS NOT NULL 
           THEN EXTRACT(day FROM actual_resolution_date - created_at) END`),
         avgResponseDays: avg(sql`CASE WHEN assignee_id IS NOT NULL AND created_at IS NOT NULL 
           THEN EXTRACT(day FROM updated_at - created_at) END`)
@@ -673,10 +673,10 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
     const [actionPlanStats] = await db
       .select({
         total: count(),
-        pending: count(sql`CASE WHEN action_plans.status = 'pending' THEN 1 END`),
-        inProgress: count(sql`CASE WHEN action_plans.status = 'in_progress' THEN 1 END`),
-        completed: count(sql`CASE WHEN action_plans.status = 'completed' THEN 1 END`),
-        overdue: count(sql`CASE WHEN action_plans.status != 'completed' AND action_plans.due_date < NOW() THEN 1 END`)
+        pending: count(sql`CASE WHEN action_plans.status = 'pendiente' THEN 1 END`),
+        inProgress: count(sql`CASE WHEN action_plans.status = 'en_proceso' THEN 1 END`),
+        completed: count(sql`CASE WHEN action_plans.status = 'completado' THEN 1 END`),
+        overdue: count(sql`CASE WHEN action_plans.status != 'completado' AND action_plans.due_date < NOW() THEN 1 END`)
       })
       .from(actionPlans)
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
@@ -686,10 +686,10 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
     const [taskStats] = await db
       .select({
         total: count(),
-        pending: count(sql`CASE WHEN action_plan_tasks.status = 'pending' THEN 1 END`),
-        inProgress: count(sql`CASE WHEN action_plan_tasks.status = 'in_progress' THEN 1 END`),
-        completed: count(sql`CASE WHEN action_plan_tasks.status = 'completed' THEN 1 END`),
-        overdue: count(sql`CASE WHEN action_plan_tasks.status != 'completed' AND action_plan_tasks.due_date < NOW() THEN 1 END`)
+        pending: count(sql`CASE WHEN action_plan_tasks.status = 'pendiente' THEN 1 END`),
+        inProgress: count(sql`CASE WHEN action_plan_tasks.status = 'en_proceso' THEN 1 END`),
+        completed: count(sql`CASE WHEN action_plan_tasks.status = 'completado' THEN 1 END`),
+        overdue: count(sql`CASE WHEN action_plan_tasks.status != 'completado' AND action_plan_tasks.due_date < NOW() THEN 1 END`)
       })
       .from(actionPlanTasks)
       .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
@@ -706,7 +706,7 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
         monthNum: sql<number>`EXTRACT(month FROM incidents.created_at)`,
         year: sql<number>`EXTRACT(year FROM incidents.created_at)`,
         incidents: count(),
-        resolved: count(sql`CASE WHEN incidents.status = 'completed' THEN 1 END`)
+        resolved: count(sql`CASE WHEN incidents.status = 'completado'THEN 1 END`)
       })
       .from(incidents)
       .where(
@@ -738,7 +738,7 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
       .where(
         and(
           eq(incidents.centerId, centerId),
-          eq(actionPlans.status, 'completed'),
+          eq(actionPlans.status, 'completado'),
           sql`action_plans.completed_at >= ${sixMonthsAgo}`
         )
       )
@@ -806,7 +806,7 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
 
     // Calcular métricas de rendimiento
     const completionRate = incidentStats.total > 0 
-      ? Math.round((incidentStats.completed / incidentStats.total) * 100) 
+      ? Math.round((incidentStats.completado / incidentStats.total) * 100) 
       : 0;
 
     const taskCompletionRate = taskStats.total > 0 
@@ -815,11 +815,11 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
 
     return {
       totalIncidents: incidentStats.total,
-      inProgress: incidentStats.inProgress,
-      critical: incidentStats.critical,
-      completed: incidentStats.completed,
-      reported: incidentStats.reported,
-      assigned: incidentStats.assigned,
+      enproceso: incidentStats.enproceso,
+      critica: incidentStats.critica,
+      completado: incidentStats.completado,
+      reportado: incidentStats.reportado,
+      asignado: incidentStats.asignado,
       resolutionRate: completionRate,
       actionPlans: {
         total: actionPlanStats.total,
@@ -1417,12 +1417,12 @@ async getGlobalStats() {
     const [incidentStats] = await db
       .select({
         total: count(),
-        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
-        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
-        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
-        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
-        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
-        pendingApproval: count(sql`CASE WHEN status = 'pending_approval' THEN 1 END`),
+        enproceso: count(sql`CASE WHEN status = 'en_proceso' THEN 1 END`),
+        completado: count(sql`CASE WHEN status = 'completado' THEN 1 END`),
+        critica: count(sql`CASE WHEN priority = 'critica' AND status != 'completado'THEN 1 END`),
+        reportado: count(sql`CASE WHEN status = 'reportado' THEN 1 END`),
+        asignado: count(sql`CASE WHEN status = 'asignado' THEN 1 END`),
+        pendiente_aprobacion: count(sql`CASE WHEN status = 'pendiente_aprobacion' THEN 1 END`),
       })
       .from(incidents);
 
@@ -1490,12 +1490,12 @@ async getGlobalStats() {
 
     return {
       totalIncidents: incidentStats.total || 0,
-      inProgress: incidentStats.inProgress || 0,
-      completed: incidentStats.completed || 0,
-      critical: incidentStats.critical || 0,
-      reported: incidentStats.reported || 0,
-      assigned: incidentStats.assigned || 0,
-      pendingApproval: incidentStats.pendingApproval || 0,
+      enproceso: incidentStats.enproceso || 0,
+      completado: incidentStats.completado || 0,
+      critica: incidentStats.critica || 0,
+      reportado: incidentStats.reportado || 0,
+      asignado: incidentStats.asignado || 0,
+      pendienteaprobacion: incidentStats.pendiente_aprobacion || 0,
       
       totalCenters: centerStats.totalCenters || 0,
       totalStores: centerStats.totalStores || 0,
@@ -1507,7 +1507,7 @@ async getGlobalStats() {
       dailyAverage,
       avgResolutionTime: "2.5 días", // Este cálculo se puede mejorar
       globalResolutionRate: incidentStats.total > 0 ? 
-        Math.round(((incidentStats.completed || 0) / incidentStats.total) * 100) : 0,
+        Math.round(((incidentStats.completado || 0) / incidentStats.total) * 100) : 0,
       
       mostActiveCenterName: mostActiveCenter[0]?.centerName || "N/A",
       mostActiveCenterCode: mostActiveCenter[0]?.centerCode || "N/A",
@@ -1632,7 +1632,7 @@ async getTrendData() {
         monthNum: sql<number>`EXTRACT(month FROM created_at)`,
         year: sql<number>`EXTRACT(year FROM created_at)`,
         incidents: count(),
-        resolved: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
+        resolved: count(sql`CASE WHEN status = 'completado'THEN 1 END`),
       })
       .from(incidents)
       .where(sql`created_at >= ${sixMonthsAgo}`)
@@ -1661,24 +1661,24 @@ async getCenterStats(centerId?: string, userId?: string) {
     const [centerStats] = await db
       .select({
         total: count(),
-        inProgress: count(sql`CASE WHEN status = 'in_progress' THEN 1 END`),
-        critical: count(sql`CASE WHEN priority = 'critical' AND status != 'completed' THEN 1 END`),
-        completed: count(sql`CASE WHEN status = 'completed' THEN 1 END`),
-        reported: count(sql`CASE WHEN status = 'reported' THEN 1 END`),
-        assigned: count(sql`CASE WHEN status = 'assigned' THEN 1 END`),
+        enproceso: count(sql`CASE WHEN status = 'en_proceso' THEN 1 END`),
+        critica: count(sql`CASE WHEN priority = 'critica' AND status != 'completado' THEN 1 END`),
+        completado: count(sql`CASE WHEN status = 'completado' THEN 1 END`),
+        reportado: count(sql`CASE WHEN status = 'reportado' THEN 1 END`),
+        asignado: count(sql`CASE WHEN status = 'asignado' THEN 1 END`),
       })
       .from(incidents)
       .where(eq(incidents.centerId, centerId));
 
     return {
       totalIncidents: centerStats.total,
-      inProgress: centerStats.inProgress,
-      critical: centerStats.critical,
-      completed: centerStats.completed,
-      reported: centerStats.reported,
-      assigned: centerStats.assigned,
+      enproceso: centerStats.enproceso,
+      critica: centerStats.critica,
+      completado: centerStats.completado,
+      reportado: centerStats.reportado,
+      asignado: centerStats.asignado,
       resolutionRate: centerStats.total > 0 ? 
-        Math.round((centerStats.completed / centerStats.total) * 100) : 0
+        Math.round((centerStats.completado / centerStats.total) * 100) : 0
     };
   } catch (error) {
     console.error('Error getting center stats:', error);
@@ -1711,10 +1711,10 @@ async getIncidentsWithAdvancedFilters(filters: any = {}, limit: number = 50, off
       // Ordenar por prioridad: critical -> high -> medium -> low
       const priorityOrder = sql`
         CASE ${incidents.priority}
-          WHEN 'critical' THEN 1
-          WHEN 'high' THEN 2
-          WHEN 'medium' THEN 3
-          WHEN 'low' THEN 4
+          WHEN 'critica' THEN 1
+          WHEN 'alta' THEN 2
+          WHEN 'media' THEN 3
+          WHEN 'baja' THEN 4
           ELSE 5
         END
       `;
@@ -1999,7 +1999,7 @@ async deleteActionPlan(actionPlanId: string) {
 }
 
 async updateActionPlanStatus(planId: string, updateData: {
-  status: "pending" | "in_progress" | "completed" | "overdue";
+  status: "pendiente" | "en_proceso" | "completado" | "retrasado";
   completedAt?: Date | null;
   updatedBy: string;
 }) {
@@ -2508,11 +2508,11 @@ async updateActionPlanProgress(actionPlanId: string) {
     const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
 
     // Actualizar estado del plan si es necesario
-    let newStatus: typeof actionPlans.status.enumValues[number] = 'pending';
+    let newStatus: typeof actionPlans.status.enumValues[number] = 'pendiente';
     if (progress === 100) {
-      newStatus = 'completed';
+      newStatus = 'completado';
     } else if (progress > 0) {
-      newStatus = 'in_progress';
+      newStatus = 'en_proceso';
     }
 
     await db
@@ -2617,7 +2617,7 @@ async updateActionPlanTask(taskId: string, updates: {
   title?: string;
   description?: string;
   dueDate?: Date;
-  status?: 'pending' | 'in_progress' | 'completed'; // ✅ Tipo específico
+  status?: 'pending' | 'en_proceso' | 'completed'; // ✅ Tipo específico
   assigneeId?: string;
   completedAt?: Date | null;
   completedBy?: string | null;
@@ -2666,7 +2666,7 @@ async updateActionPlanTask(taskId: string, updates: {
 async updateActionPlan(actionPlanId: string, updates: {
   title?: string;
   description?: string;
-  status?: 'pending' | 'in_progress' | 'completed' | 'overdue'; // ✅ Tipo específico
+  status?: 'pendiente' | 'en_proceso' | 'completado' | 'retrasado'; // ✅ Tipo específico
   dueDate?: Date;
   assigneeId?: string;
   completedAt?: Date | null;
@@ -2970,16 +2970,16 @@ async closeIncidentActionPlansAndTasks(incidentId: string, userId: string): Prom
     
     for (const plan of actionPlansList) {
       // Solo cerrar planes que no estén ya completados
-      if (plan.status !== 'completed') {
+      if (plan.status !== 'completado') {
         // Primero cerrar todas las tareas del plan
         const tasksList = await this.getActionPlanTasks(plan.id);
         
         for (const task of tasksList) {
-          if (task.status !== 'completed') {
+          if (task.status !== 'completado') {
             await db
               .update(actionPlanTasks)  // Usar la tabla importada
               .set({
-                status: 'completed',
+                status: 'completado',
                 completedAt: new Date(),
                 completedBy: userId,
                 updatedAt: new Date()
@@ -2995,7 +2995,7 @@ async closeIncidentActionPlansAndTasks(incidentId: string, userId: string): Prom
         await db
           .update(actionPlans)  // Usar la tabla importada
           .set({
-            status: 'completed',
+            status: 'completado',
             completedAt: new Date(),
             completedBy: userId,
             updatedAt: new Date()

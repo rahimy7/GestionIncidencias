@@ -78,31 +78,31 @@ export function UserDashboard() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
+      case 'critica': return 'bg-red-500';
+      case 'alta': return 'bg-orange-500';
       case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
+      case 'baja': return 'bg-green-500';
       default: return 'bg-gray-500';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'text-green-600';
-      case 'in_progress': return 'text-blue-600';
-      case 'pending_approval': return 'text-orange-600';
-      case 'assigned': return 'text-purple-600';
-      case 'reported': return 'text-gray-600';
+      case 'completado': return 'text-green-600';
+      case 'en_proceso': return 'text-blue-600';
+      case 'pendiente_aprovacion': return 'text-orange-600';
+      case 'asignada': return 'text-purple-600';
+      case 'reportada': return 'text-gray-600';
       default: return 'text-gray-600';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="h-4 w-4" />;
-      case 'in_progress': return <Clock className="h-4 w-4" />;
-      case 'pending_approval': return <AlertCircle className="h-4 w-4" />;
-      case 'assigned': return <Users className="h-4 w-4" />;
+      case 'completado': return <CheckCircle2 className="h-4 w-4" />;
+      case 'en_proceso': return <Clock className="h-4 w-4" />;
+      case 'pendiente_aprobacion': return <AlertCircle className="h-4 w-4" />;
+      case 'asignado': return <Users className="h-4 w-4" />;
       default: return <FileText className="h-4 w-4" />;
     }
   };
@@ -111,9 +111,9 @@ export function UserDashboard() {
     const statusMap: Record<string, string> = {
       'reported': 'Reportada',
       'assigned': 'Asignada',
-      'in_progress': 'En Progreso',
-      'pending_approval': 'Pendiente Aprobación',
-      'completed': 'Completada',
+      'en_proceso': 'En Progreso',
+      'pendiente_approval': 'Pendiente Aprobación',
+      'completado': 'Completada',
       'closed': 'Cerrada'
     };
     return statusMap[status] || status;
@@ -128,11 +128,11 @@ export function UserDashboard() {
   // Estadísticas de planes de acción
   const actionPlansStats = {
     total: myActionPlans?.length || 0,
-    pending: myActionPlans?.filter((p: any) => p.status === 'pending').length || 0,
-    inProgress: myActionPlans?.filter((p: any) => p.status === 'in_progress').length || 0,
-    completed: myActionPlans?.filter((p: any) => p.status === 'completed').length || 0,
-    overdue: myActionPlans?.filter((p: any) => 
-      p.status !== 'completed' && new Date(p.dueDate) < new Date()
+    pendiente: myActionPlans?.filter((p: any) => p.status === 'pendiente').length || 0,
+    enproceso: myActionPlans?.filter((p: any) => p.status === 'en_proceso').length || 0,
+    completado: myActionPlans?.filter((p: any) => p.status === 'completado').length || 0,
+    retrasado: myActionPlans?.filter((p: any) => 
+      p.status !== 'completado' && new Date(p.dueDate) < new Date()
     ).length || 0,
     asResponsible: myActionPlans?.filter((p: any) => p.userRole === 'assignee').length || 0,
     asParticipant: myActionPlans?.filter((p: any) => p.userRole === 'participant').length || 0,
@@ -185,7 +185,7 @@ export function UserDashboard() {
                 <Clock className="h-8 w-8 text-yellow-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
-                  <p className="text-2xl font-bold">{actionPlansStats.inProgress}</p>
+                  <p className="text-2xl font-bold">{actionPlansStats.enproceso}</p>
                 </div>
               </div>
             </CardContent>
@@ -194,10 +194,10 @@ export function UserDashboard() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center">
-                <AlertTriangle className={`h-8 w-8 ${actionPlansStats.overdue > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                <AlertTriangle className={`h-8 w-8 ${actionPlansStats.retrasado > 0 ? 'text-red-600' : 'text-gray-400'}`} />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-muted-foreground">Vencidos</p>
-                  <p className="text-2xl font-bold">{actionPlansStats.overdue}</p>
+                  <p className="text-2xl font-bold">{actionPlansStats.retrasado}</p>
                 </div>
               </div>
             </CardContent>
@@ -257,17 +257,17 @@ export function UserDashboard() {
                   <div className="space-y-4">
                     {/* Filtros rápidos */}
                     <div className="flex flex-wrap gap-2 mb-4">
-                      <Badge variant={actionPlansStats.overdue > 0 ? "destructive" : "secondary"}>
-                        Vencidos: {actionPlansStats.overdue}
+                      <Badge variant={actionPlansStats.retrasado > 0 ? "destructive" : "secondary"}>
+                        Vencidos: {actionPlansStats.retrasado}
                       </Badge>
                       <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-200">
-                        Pendientes: {actionPlansStats.pending}
+                        Pendientes: {actionPlansStats.retrasado}
                       </Badge>
                       <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
-                        En Progreso: {actionPlansStats.inProgress}
+                        En Progreso: {actionPlansStats.enproceso}
                       </Badge>
                       <Badge variant="outline" className="bg-green-50 text-green-800 border-green-200">
-                        Completados: {actionPlansStats.completed}
+                        Completados: {actionPlansStats.completado}
                       </Badge>
                     </div>
 
@@ -276,14 +276,14 @@ export function UserDashboard() {
                       {myActionPlans
                         ?.sort((a: any, b: any) => {
                           // Priorizar planes vencidos y en progreso
-                          const aOverdue = a.status !== 'completed' && new Date(a.dueDate) < new Date();
-                          const bOverdue = b.status !== 'completed' && new Date(b.dueDate) < new Date();
+                          const aretrasado = a.status !== 'completado' && new Date(a.dueDate) < new Date();
+                          const bretrasado = b.status !== 'completado' && new Date(b.dueDate) < new Date();
                           
-                          if (aOverdue && !bOverdue) return -1;
-                          if (!aOverdue && bOverdue) return 1;
+                          if (aretrasado && !bretrasado) return -1;
+                          if (!aretrasado && bretrasado) return 1;
                           
                           // Luego por estado (en progreso primero)
-                          const statusOrder = { 'in_progress': 0, 'pending': 1, 'completed': 2, 'cancelled': 3 };
+                          const statusOrder = { 'en_proceso': 0, 'pendiente': 1, 'completado': 2, 'cancelled': 3 };
                           const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4;
                           const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4;
                           
@@ -441,7 +441,7 @@ export function UserDashboard() {
                     <div className="flex justify-between">
                       <span>Activas:</span>
                       <span className="font-medium">
-                        {uniqueIncidents.filter(i => !['completed', 'closed'].includes(i.status)).length}
+                        {uniqueIncidents.filter(i => !['completado', 'closed'].includes(i.status)).length}
                       </span>
                     </div>
                   </div>
@@ -456,7 +456,7 @@ export function UserDashboard() {
                     </div>
                     <div className="flex justify-between">
                       <span>Completados:</span>
-                      <span className="font-medium">{actionPlansStats.completed}</span>
+                      <span className="font-medium">{actionPlansStats.completado}</span>
                     </div>
                   </div>
                 </div>
@@ -464,23 +464,23 @@ export function UserDashboard() {
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground mb-2">Atención Requerida</h4>
                   <div className="space-y-1 text-sm">
-                    {actionPlansStats.overdue > 0 && (
+                    {actionPlansStats.retrasado > 0 && (
                       <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
                         <AlertTriangle className="h-4 w-4 text-red-600" />
                         <span className="text-red-800">
-                          {actionPlansStats.overdue} plan{actionPlansStats.overdue !== 1 ? 'es' : ''} vencido{actionPlansStats.overdue !== 1 ? 's' : ''}
+                          {actionPlansStats.retrasado} plan{actionPlansStats.retrasado !== 1 ? 'es' : ''} vencido{actionPlansStats.retrasado !== 1 ? 's' : ''}
                         </span>
                       </div>
                     )}
-                    {actionPlansStats.inProgress > 0 && (
+                    {actionPlansStats.enproceso > 0 && (
                       <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
                         <Clock className="h-4 w-4 text-blue-600" />
                         <span className="text-blue-800">
-                          {actionPlansStats.inProgress} plan{actionPlansStats.inProgress !== 1 ? 'es' : ''} en progreso
+                          {actionPlansStats.enproceso} plan{actionPlansStats.enproceso !== 1 ? 'es' : ''} en progreso
                         </span>
                       </div>
                     )}
-                    {actionPlansStats.overdue === 0 && actionPlansStats.inProgress === 0 && actionPlansStats.pending === 0 && actionPlansStats.total > 0 && (
+                    {actionPlansStats.retrasado === 0 && actionPlansStats.enproceso === 0 && actionPlansStats.pendiente === 0 && actionPlansStats.total > 0 && (
                       <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
                         <CheckCircle2 className="h-4 w-4 text-green-600" />
                         <span className="text-green-800">

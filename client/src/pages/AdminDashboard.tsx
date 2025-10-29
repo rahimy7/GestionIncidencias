@@ -44,9 +44,9 @@ import { useToast } from "@/hooks/use-toast";
 
 interface GlobalStats {
   totalIncidents: number;
-  inProgress: number;
-  completed: number;
-  critical: number;
+  enproceso: number;
+  completado: number;
+  critico: number;
   totalCenters: number;
   totalStores: number;
   totalDistributionCenters: number;
@@ -87,10 +87,10 @@ export function AdminDashboard() {
   });
 
   const chartData = [
-    { name: 'Reportadas', value: globalStats.totalIncidents - globalStats.inProgress - globalStats.completed || 0, color: '#3b82f6' },
-    { name: 'En Progreso', value: globalStats.inProgress || 0, color: '#eab308' },
-    { name: 'Completadas', value: globalStats.completed || 0, color: '#22c55e' },
-    { name: 'Críticas', value: globalStats.critical || 0, color: '#ef4444' },
+    { name: 'Reportadas', value: globalStats.totalIncidents - globalStats.enproceso - globalStats.completado || 0, color: '#3b82f6' },
+    { name: 'En Progreso', value: globalStats.enproceso || 0, color: '#eab308' },
+    { name: 'Completadas', value: globalStats.completado || 0, color: '#22c55e' },
+    { name: 'Críticas', value: globalStats.critico || 0, color: '#ef4444' },
   ];
 
   const trendData = [
@@ -112,24 +112,24 @@ export function AdminDashboard() {
     },
     {
       title: "En Progreso",
-      value: globalStats.inProgress || 0,
+      value: globalStats.enproceso || 0,
       icon: Clock,
       color: "text-yellow-600",
-      href: "/admin/incidents?status=in_progress"
+      href: "/admin/incidents?status=en_proceso"
     },
     {
       title: "Completadas",
-      value: globalStats.completed || 0,
+      value: globalStats.completado || 0,
       icon: CheckCircle2,
       color: "text-green-600",
-      href: "/admin/incidents?status=completed"
+      href: "/admin/incidents?status=completado"
     },
     {
       title: "Críticas",
-      value: globalStats.critical || 0,
+      value: globalStats.critico || 0,
       icon: AlertCircle,
       color: "text-red-600",
-      href: "/admin/incidents?status=critical"
+      href: "/admin/incidents?status=critica"
     },
   ];
 
@@ -427,7 +427,7 @@ export function AdminDashboard() {
                       <Badge 
                         variant="secondary" 
                         className={
-                          incident.priority === 'critical' ? 'bg-red-100 text-red-800' :
+                          incident.priority === 'critica' ? 'bg-red-100 text-red-800' :
                           incident.priority === 'high' ? 'bg-orange-100 text-orange-800' :
                           'bg-blue-100 text-blue-800'
                         }

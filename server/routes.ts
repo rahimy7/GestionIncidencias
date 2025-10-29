@@ -510,7 +510,7 @@ app.put("/api/incidents/:id", isAuthenticated, async (req: any, res) => {
     const updatedIncident = await storage.updateIncident(id, updates, userId);
 
     // ✅ NUEVA FUNCIONALIDAD: Si se marca como completada, cerrar planes de acción y tareas
-    if (updates.status === 'completed' && previousStatus !== 'completed') {
+    if (updates.status === 'completado' && previousStatus !== 'completado') {
       try {
         // Usar el nuevo método del storage para cerrar todo
         const result = await storage.closeIncidentActionPlansAndTasks(id, userId);
@@ -854,7 +854,7 @@ app.patch("/api/action-plans/:id", isAuthenticated, async (req: any, res) => {
     console.log('📝 Updating action plan:', id, updates);
 
     // Si se está completando el plan, agregar fecha de completado
-    if (updates.status === 'completed') {
+    if (updates.status === 'completado') {
       updates.completedAt = new Date();
     }
 
@@ -1616,18 +1616,18 @@ app.get('/api/centers', isAuthenticated, async (req: any, res) => {
 });
 
 function getActionPlanStatusWithOverdue(
-  requestedStatus: "pending" | "in_progress" | "completed", // CORREGIDO: Sin 'overdue'
+  requestedStatus: "pendiente" | "en_proceso" | "completado", // CORREGIDO: Sin 'overdue'
   dueDate: Date,
   currentStatus: string
-): "pending" | "in_progress" | "completed" | "overdue" {
+): "pendiente" | "en_proceso" | "completado" | "retrasado" {
   // Si se está marcando como completado, siempre permitir
-  if (requestedStatus === 'completed') {
-    return 'completed';
+  if (requestedStatus === 'completado') {
+    return 'completado';
   }
   
   // Si ya está completado, no cambiar
-  if (currentStatus === 'completed') {
-    return 'completed';
+  if (currentStatus === 'completado') {
+    return 'completado';
   }
   
   // Verificar si está vencido
@@ -1636,7 +1636,7 @@ function getActionPlanStatusWithOverdue(
   
   // Si está vencido y no completado, marcar como overdue
   if (isOverdue) {
-    return 'overdue';
+    return 'retrasado';
   }
   
   // En otros casos, usar el estado solicitado
@@ -1694,7 +1694,7 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     
     // Validar datos de entrada
     const updateSchema = z.object({
-      status: z.enum(['pending', 'in_progress', 'completed']),
+      status: z.enum(['pendiente', 'en_proceso', 'completado']),
       completedAt: z.string().optional()
     });
 
@@ -1724,7 +1724,7 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     }
 
     // Si se está completando, verificar que todas las tareas estén completadas
-    if (status === 'completed') {
+    if (status === 'completado') {
       const allTasksCompleted = await storage.areAllTasksCompleted(planId);
       if (!allTasksCompleted) {
         return res.status(400).json({ 
@@ -1743,8 +1743,8 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     // Actualizar el plan
     const updatedPlan = await storage.updateActionPlan(planId, {
       status: finalStatus,
-      completedAt: status === 'completed' ? new Date() : (completedAt ? new Date(completedAt) : null),
-      completedBy: status === 'completed' ? userId : null
+      completedAt: status === 'completado' ? new Date() : (completedAt ? new Date(completedAt) : null),
+      completedBy: status === 'completado' ? userId : null
     });
 
     console.log('✅ Action plan status updated successfully');
@@ -1767,7 +1767,7 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     
     // Validar datos
     const updateSchema = z.object({
-      status: z.enum(['pending', 'in_progress', 'completed']),
+      status: z.enum(['pendiente', 'en_proceso', 'completado']),
       completedAt: z.string().optional()
     });
 
@@ -1797,7 +1797,7 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     }
 
     // Si se está completando el plan, verificar que todas las tareas estén completadas
-    if (status === 'completed') {
+    if (status === 'completado') {
       const allTasksCompleted = await storage.areAllTasksCompleted(planId);
       if (!allTasksCompleted) {
         return res.status(400).json({ 
@@ -1816,8 +1816,8 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
     // Actualizar el plan
     const updatedPlan = await storage.updateActionPlan(planId, {
       status: finalStatus,
-      completedAt: status === 'completed' ? new Date() : (completedAt ? new Date(completedAt) : null),
-      completedBy: status === 'completed' ? userId : null
+      completedAt: status === 'completado' ? new Date() : (completedAt ? new Date(completedAt) : null),
+      completedBy: status === 'completado' ? userId : null
     });
 
     console.log('✅ Action plan status updated successfully');
@@ -1918,7 +1918,7 @@ app.patch('/api/action-plans/:id', isAuthenticated, async (req: any, res) => {
     }
     
     // Si se está completando el plan, verificar que todas las tareas estén completadas
-    if (updates.status === 'completed') {
+    if (updates.status === 'completado') {
       const allTasksCompleted = await storage.areAllTasksCompleted(id);
       if (!allTasksCompleted) {
         return res.status(400).json({ 
@@ -2011,7 +2011,7 @@ app.patch('/api/action-plans/:id/tasks/:taskId',
       }
       
       // Si se está completando, agregar metadata
-      if (updates.status === 'completed') {
+      if (updates.status === 'completado') {
         updates.completedAt = new Date();
         updates.completedBy = userId;
       }

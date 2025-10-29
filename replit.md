@@ -25,7 +25,7 @@ Authentication is implemented using Replit's OIDC (OpenID Connect) integration w
 The system includes a sophisticated object storage service integrated with Google Cloud Storage through Replit's sidecar architecture. File uploads are handled through Uppy with support for direct-to-cloud uploads via presigned URLs. The storage system implements Access Control Lists (ACL) for fine-grained permission management on uploaded files.
 
 ## Data Model
-The database schema includes incident status tracking (reported, assigned, in_progress, pending_approval, completed, closed), priority levels (low, medium, high, critical), and comprehensive audit logging. The system supports incident types, organizational centers, participant management, and action plan tracking with due dates and completion status.
+The database schema includes incident status tracking (reported, assigned, en_proceso, pending_approval, completed, closed), priority levels (low, medium, high, critical), and comprehensive audit logging. The system supports incident types, organizational centers, participant management, and action plan tracking with due dates and completion status.
 
 ## Development Environment
 The application uses Vite for fast development builds and hot module replacement. The build process creates optimized production bundles with separate client and server builds. The development setup includes TypeScript checking, ESBuild for server bundling, and Replit-specific development tools.

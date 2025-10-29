@@ -38,43 +38,43 @@ export function IncidentCard({ incident, showType, onDelete }: IncidentCardProps
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
+      case 'critica': return 'bg-red-500';
+      case 'alta': return 'bg-orange-500';
+      case 'media': return 'bg-yellow-500';
+      case 'baja': return 'bg-green-500';
       default: return 'bg-gray-500';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'text-green-600 bg-green-50 border-green-200';
-      case 'in_progress': return 'text-blue-600 bg-blue-50 border-blue-200';
-      case 'pending_approval': return 'text-orange-600 bg-orange-50 border-orange-200';
-      case 'assigned': return 'text-purple-600 bg-purple-50 border-purple-200';
-      case 'reported': return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'completado': return 'text-green-600 bg-green-50 border-green-200';
+      case 'en_proceso': return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'pendiente_aprovacion': return 'text-orange-600 bg-orange-50 border-orange-200';
+      case 'asignado': return 'text-purple-600 bg-purple-50 border-purple-200';
+      case 'reportado': return 'text-gray-600 bg-gray-50 border-gray-200';
       default: return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="h-3 w-3" />;
-      case 'in_progress': return <Clock className="h-3 w-3" />;
-      case 'pending_approval': return <AlertCircle className="h-3 w-3" />;
-      case 'assigned': return <Users className="h-3 w-3" />;
+      case 'completado': return <CheckCircle2 className="h-3 w-3" />;
+      case 'en_proceso': return <Clock className="h-3 w-3" />;
+      case 'pendiente_aprobacion': return <AlertCircle className="h-3 w-3" />;
+      case 'asignado': return <Users className="h-3 w-3" />;
       default: return <FileText className="h-3 w-3" />;
     }
   };
 
   const getStatusText = (status: string) => {
     const statusMap: Record<string, string> = {
-      'reported': 'Reportada',
-      'assigned': 'Asignada',
-      'in_progress': 'En Progreso',
-      'pending_approval': 'Pendiente Aprobación',
-      'completed': 'Completada',
-      'closed': 'Cerrada'
+      'reportado': 'Reportada',
+      'asignado': 'Asignada',
+      'en_proceso': 'En Progreso',
+      'pendiente_aprobacion': 'Pendiente Aprobación',
+      'completado': 'Completada',
+      'cerrado': 'Cerrada'
     };
     return statusMap[status] || status;
   };

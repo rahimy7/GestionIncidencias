@@ -114,7 +114,7 @@ async function createSampleData() {
         incidentNumber: 'INC-2025-001',
         title: 'Derrame de químicos en área de producción',
         description: 'Se detectó un derrame de químicos en el área de producción línea 2. Se evacuó el área inmediatamente.',
-        status: 'in_progress',
+        status: 'en_proceso',
         priority: 'high',
         reporterId: testUsers.find(u => u.role === 'user')?.id || testUsers[0].id,
         centerId: testCenters[0].id,
@@ -184,13 +184,13 @@ async function createSampleData() {
     // 6. Crear planes de acción
     console.log('📋 Creando planes de acción...');
     for (const incident of sampleIncidents) {
-      if (incident.status === 'in_progress' || incident.status === 'pending_approval') {
+      if (incident.status === 'en_proceso' || incident.status === 'pending_approval') {
         await db.insert(actionPlans).values([
           {
             incidentId: incident.id,
             title: 'Reparación inmediata',
             description: 'Realizar las reparaciones necesarias para resolver el incidente',
-            status: incident.status === 'pending_approval' ? 'completed' : 'in_progress',
+            status: incident.status === 'pending_approval' ? 'completado': 'en_proceso',
             assigneeId: incident.assigneeId || testUsers[0].id,
             dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 días
             completedAt: incident.status === 'pending_approval' ? new Date() : null
