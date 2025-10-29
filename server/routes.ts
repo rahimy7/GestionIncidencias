@@ -791,7 +791,7 @@ app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, re
       description: description ? description.trim() : "",
       assigneeId: assigneeId,
       dueDate: new Date(dueDate),
-      status: "pending", // Default status
+      status: "pendiente", // Default status
       departmentId: req.body.departmentId || null
     };
 

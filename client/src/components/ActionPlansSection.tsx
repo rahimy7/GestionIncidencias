@@ -477,7 +477,7 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
         body: JSON.stringify({
           ...newPlan,
           incidentId: incident.id,
-          status: 'pending'
+          status: 'pendiente'
         })
       });
 

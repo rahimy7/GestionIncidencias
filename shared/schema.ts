@@ -213,7 +213,7 @@ export const actionPlanTasks = pgTable('action_plan_tasks', {
   title: text('title').notNull(),
   description: text('description').default(''),
   dueDate: timestamp('due_date').notNull(),
-  status: text('status').notNull().default('pendiente'), // pending, en_proceso, completed
+  status: text('status').notNull().default('pendiente'), 
   assigneeId: text('assignee_id').notNull().references(() => users.id),
   createdBy: text('created_by').notNull().references(() => users.id),
   completedAt: timestamp('completed_at'),

@@ -455,20 +455,20 @@ const isretrasado = (dueDate: string, status: string) => {
     i.status === 'en_proceso'
   );
   const completedIncidents = allIncidents.filter((i: Incident) => 
-    i.status === 'completed'
+    i.status === 'completado'
   );
   const criticalIncidents = allIncidents.filter((i: Incident) => 
-    i.priority === 'critical' && i.status !== 'completed'
+    i.priority === 'critica' && i.status !== 'completado'
   );
 
   // Función para obtener el color del badge según el estado
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
-      case 'completed': return 'default';
+      case 'completado': return 'default';
       case 'en_proceso': return 'secondary';
-      case 'assigned': return 'outline';
-      case 'reported': return 'outline';
-      case 'pending_approval': return 'secondary';
+      case 'asignado': return 'outline';
+      case 'reportado': return 'outline';
+      case 'pendiente_aprobacion': return 'secondary';
       default: return 'outline';
     }
   };
@@ -487,11 +487,11 @@ const isretrasado = (dueDate: string, status: string) => {
   // Función para obtener texto del estado
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'reported': return 'Reportada';
-      case 'assigned': return 'Asignada';
+      case 'reportado': return 'Reportada';
+      case 'asignado': return 'Asignada';
       case 'en_proceso': return 'En Progreso';
-      case 'pending_approval': return 'Pendiente Aprobación';
-      case 'completed': return 'Completada';
+      case 'pendiente_aprobacion': return 'Pendiente Aprobación';
+      case 'completado': return 'Completada';
       default: return status;
     }
   };
@@ -758,11 +758,11 @@ const isretrasado = (dueDate: string, status: string) => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos los estados</SelectItem>
-                        <SelectItem value="reported">Reportada</SelectItem>
-                        <SelectItem value="assigned">Asignada</SelectItem>
+                        <SelectItem value="reportado">Reportada</SelectItem>
+                        <SelectItem value="asignado">Asignada</SelectItem>
                         <SelectItem value="en_proceso">En Progreso</SelectItem>
-                        <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
-                        <SelectItem value="completed">Completada</SelectItem>
+                        <SelectItem value="pendiente_aprobacion">Pendiente Aprobación</SelectItem>
+                        <SelectItem value="completado">Completada</SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -773,10 +773,10 @@ const isretrasado = (dueDate: string, status: string) => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todas las prioridades</SelectItem>
-                        <SelectItem value="critical">Crítica</SelectItem>
-                        <SelectItem value="high">Alta</SelectItem>
-                        <SelectItem value="medium">Media</SelectItem>
-                        <SelectItem value="low">Baja</SelectItem>
+                        <SelectItem value="critica">Crítica</SelectItem>
+                        <SelectItem value="alta">Alta</SelectItem>
+                        <SelectItem value="media">Media</SelectItem>
+                        <SelectItem value="baja">Baja</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1091,9 +1091,9 @@ const isretrasado = (dueDate: string, status: string) => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="pending">Pendiente</SelectItem>
+              <SelectItem value="pendiente">Pendiente</SelectItem>
               <SelectItem value="en_proceso">En Progreso</SelectItem>
-              <SelectItem value="completed">Completado</SelectItem>
+              <SelectItem value="completado">Completado</SelectItem>
               <SelectItem value="retrasado">Atrasado</SelectItem>
             </SelectContent>
           </Select>

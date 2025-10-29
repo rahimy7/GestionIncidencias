@@ -673,10 +673,10 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
     const [actionPlanStats] = await db
       .select({
         total: count(),
-        pending: count(sql`CASE WHEN action_plans.status = 'pendiente' THEN 1 END`),
-        inProgress: count(sql`CASE WHEN action_plans.status = 'en_proceso' THEN 1 END`),
-        completed: count(sql`CASE WHEN action_plans.status = 'completado' THEN 1 END`),
-        overdue: count(sql`CASE WHEN action_plans.status != 'completado' AND action_plans.due_date < NOW() THEN 1 END`)
+        pendiente: count(sql`CASE WHEN action_plans.status = 'pendiente' THEN 1 END`),
+        enproceso: count(sql`CASE WHEN action_plans.status = 'en_proceso' THEN 1 END`),
+        completado: count(sql`CASE WHEN action_plans.status = 'completado' THEN 1 END`),
+        retrasado: count(sql`CASE WHEN action_plans.status != 'completado' AND action_plans.due_date < NOW() THEN 1 END`)
       })
       .from(actionPlans)
       .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
@@ -686,10 +686,10 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
     const [taskStats] = await db
       .select({
         total: count(),
-        pending: count(sql`CASE WHEN action_plan_tasks.status = 'pendiente' THEN 1 END`),
-        inProgress: count(sql`CASE WHEN action_plan_tasks.status = 'en_proceso' THEN 1 END`),
-        completed: count(sql`CASE WHEN action_plan_tasks.status = 'completado' THEN 1 END`),
-        overdue: count(sql`CASE WHEN action_plan_tasks.status != 'completado' AND action_plan_tasks.due_date < NOW() THEN 1 END`)
+        pendiente: count(sql`CASE WHEN action_plan_tasks.status = 'pendiente' THEN 1 END`),
+        enproceso: count(sql`CASE WHEN action_plan_tasks.status = 'en_proceso' THEN 1 END`),
+        completado: count(sql`CASE WHEN action_plan_tasks.status = 'completado' THEN 1 END`),
+        retrasado: count(sql`CASE WHEN action_plan_tasks.status != 'completado' AND action_plan_tasks.due_date < NOW() THEN 1 END`)
       })
       .from(actionPlanTasks)
       .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
@@ -810,7 +810,7 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
       : 0;
 
     const taskCompletionRate = taskStats.total > 0 
-      ? Math.round((taskStats.completed / taskStats.total) * 100) 
+      ? Math.round((taskStats.completado / taskStats.total) * 100) 
       : 0;
 
     return {
@@ -823,17 +823,17 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
       resolutionRate: completionRate,
       actionPlans: {
         total: actionPlanStats.total,
-        pending: actionPlanStats.pending,
-        inProgress: actionPlanStats.inProgress,
-        completed: actionPlanStats.completed,
-        overdue: actionPlanStats.overdue
+        pendiente: actionPlanStats.pendiente,
+        enproceso: actionPlanStats.enproceso,
+        completed: actionPlanStats.completado,
+        retrasado: actionPlanStats.retrasado
       },
       tasks: {
         total: taskStats.total,
-        pending: taskStats.pending,
-        inProgress: taskStats.inProgress,
-        completed: taskStats.completed,
-        overdue: taskStats.overdue
+        pendiente: taskStats.pendiente,
+        enproceso: taskStats.enproceso,
+        completado: taskStats.completado,
+        retrasado: taskStats.retrasado
       },
       trends,
       performanceMetrics: {
@@ -2375,7 +2375,7 @@ async addActionPlanTask(taskData: {
         title: taskData.title,
         description: taskData.description,
         dueDate: taskData.dueDate,
-        status: 'pending',
+        status: 'pendiente',
         assigneeId: taskData.assigneeId,
         createdBy: taskData.createdBy,
         createdAt: new Date(),
@@ -2617,7 +2617,7 @@ async updateActionPlanTask(taskId: string, updates: {
   title?: string;
   description?: string;
   dueDate?: Date;
-  status?: 'pending' | 'en_proceso' | 'completed'; // ✅ Tipo específico
+  status?: 'pendiente' | 'en_proceso' | 'completado'; // ✅ Tipo específico
   assigneeId?: string;
   completedAt?: Date | null;
   completedBy?: string | null;
