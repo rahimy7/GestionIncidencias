@@ -36,6 +36,7 @@ import {
   User,
   AlertTriangle,
   Trash2,
+   X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -45,6 +46,7 @@ import { toast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from '@radix-ui/react-alert-dialog';
 import { AlertDialogHeader, AlertDialogFooter } from './ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { EvidenceViewer } from '@/components/EvidenceViewer';
 
 interface ActionPlanDetailProps {
   actionPlanId: string;
@@ -123,6 +125,7 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
   const [newComment, setNewComment] = useState('');
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
 
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -217,28 +220,46 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
   };
 
   // Mutation para agregar comentario
-  const addCommentMutation = useMutation({
-    mutationFn: async ({ content }: { content: string }) => {
-      const response = await apiRequest(`/api/action-plans/${actionPlanId}/comments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
+const addCommentMutation = useMutation({
+  mutationFn: async ({ content, files }: { content: string; files?: File[] }) => {
+    const formData = new FormData();
+    formData.append('content', content);
+    
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        formData.append('attachments', file);
       });
-      if (!response.ok) throw new Error('Error adding comment');
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
-      setNewComment('');
-    },
-  });
+    }
+    
+    const response = await fetch(`/api/action-plans/${actionPlanId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) throw new Error('Error adding comment');
+    return response.json();
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
+    setNewComment('');
+    setCommentFiles([]);
+  },
+});
 
-  const handleAddComment = () => {
-    if (!newComment.trim()) return;
-    addCommentMutation.mutate({ content: newComment });
-  };
+ const handleAddComment = () => {
+  if (!newComment.trim()) return;
+  addCommentMutation.mutate({ 
+    content: newComment,
+    files: commentFiles.length > 0 ? commentFiles : undefined 
+  });
+};
+
+const handleCommentFileUpload = async (files: File[]) => {
+  setCommentFiles(prev => [...prev, ...files]);
+};
 
 // Reemplaza la mutación deletePlanMutation con esta:
 const deletePlanMutation = useMutation({
@@ -588,38 +609,7 @@ return (
                           </div>
                         </div>
 
-                        {/* Evidencia de la tarea */}
-                        {task.evidence && task.evidence.length > 0 && (
-                          <div className="mt-2">
-                            <div className="text-xs text-muted-foreground mb-1">Evidencia:</div>
-                            <div className="space-y-1">
-                              {task.evidence.map((evidence) => (
-                                <div 
-                                  key={evidence.id}
-                                  className="flex items-center gap-2 p-1.5 bg-green-50 rounded border text-xs"
-                                >
-                                  {getFileIcon(evidence.filename)}
-                                  <span className="flex-1">{evidence.filename}</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm" 
-                                    asChild
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <a 
-                                      href={evidence.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      download={evidence.filename}
-                                    >
-                                      <Download className="h-3 w-3" />
-                                    </a>
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        
                       </div>
 
                       {/* Botones de acción */}
@@ -655,6 +645,72 @@ return (
 
         {/* Panel derecho - Participantes y comentarios */}
         <div className="space-y-6">
+          {/* Evidencias - NUEVA SECCIÓN */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="text-lg flex items-center gap-2">
+        <Paperclip className="h-5 w-5" />
+        Evidencias ({actionPlan.tasks.reduce((acc, task) => acc + (task.evidence?.length || 0), 0)})
+      </CardTitle>
+    </CardHeader>
+    <CardContent>
+      {actionPlan.tasks.some(t => t.evidence && t.evidence.length > 0) ? (
+        <div className="space-y-4">
+          {actionPlan.tasks
+            .filter(task => task.evidence && task.evidence.length > 0)
+            .map(task => (
+              <div key={task.id} className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {task.title}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {task.evidence.map((evidence) => {
+                    const isImage = evidence.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                    
+                    return (
+                      <a
+                        key={evidence.id}
+                        href={evidence.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded border hover:border-primary/50 transition-all"
+                      >
+                        {isImage ? (
+                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                            <img 
+                              src={evidence.url} 
+                              alt={evidence.filename}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            {getFileIcon(evidence.filename)}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">
+                            {evidence.filename}
+                          </p>
+                        </div>
+                        <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary flex-shrink-0" />
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+        </div>
+      ) : (
+        <div className="text-center py-6 text-muted-foreground">
+          <Paperclip className="h-10 w-10 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Sin evidencias</p>
+        </div>
+      )}
+    </CardContent>
+  </Card>
+         
+
           {/* Participantes */}
           <Card>
             <CardHeader>
@@ -678,86 +734,188 @@ return (
           </Card>
 
           {/* Comentarios */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Comentarios</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Formulario para nuevo comentario */}
-              <div className="space-y-3">
-                <Textarea
-                  placeholder="Escribe un comentario..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  rows={3}
-                />
+         <Card>
+  <CardHeader>
+    <CardTitle className="text-lg">Comentarios y Evidencia</CardTitle>
+  </CardHeader>
+  <CardContent className="space-y-4">
+    {/* Formulario para nuevo comentario */}
+    <div className="space-y-3 p-4 bg-muted/30 rounded-lg border-2 border-dashed">
+      <Textarea
+        placeholder="Escribe un comentario..."
+        value={newComment}
+        onChange={(e) => setNewComment(e.target.value)}
+        rows={3}
+        className="resize-none"
+      />
 
+      {/* Vista previa de archivos seleccionados */}
+      {commentFiles.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              {commentFiles.length} archivo(s) seleccionado(s)
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCommentFiles([])}
+              className="h-6 text-xs"
+            >
+              Limpiar
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {commentFiles.map((file, index) => (
+              <div 
+                key={index}
+                className="flex items-center gap-2 p-2 bg-background rounded border text-xs"
+              >
+                <Paperclip className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                <span className="flex-1 truncate">{file.name}</span>
                 <Button
-                  onClick={handleAddComment}
-                  disabled={!newComment.trim()}
+                  variant="ghost"
                   size="sm"
-                  className="w-full"
+                  className="h-5 w-5 p-0"
+                  onClick={() => setCommentFiles(prev => prev.filter((_, i) => i !== index))}
                 >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Agregar Comentario
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-              <Separator />
+     {/* Botones de acción */}
+{/* Botones de acción */}
+<div className="flex flex-col gap-2">
+  <label className="w-full">
+    <input
+      type="file"
+      multiple
+      accept="image/*,application/pdf,.doc,.docx,.txt"
+      className="hidden"
+      onChange={(e) => {
+        const files = Array.from(e.target.files || []);
+        handleCommentFileUpload(files);
+        e.target.value = '';
+      }}
+    />
+    <Button
+      variant="outline"
+      size="sm"
+      className="w-full"
+      type="button"
+      onClick={(e) => {
+        e.currentTarget.parentElement?.querySelector('input')?.click();
+      }}
+    >
+      <Paperclip className="h-4 w-4 mr-2" />
+      Adjuntar archivos
+    </Button>
+  </label>
+  
+  <Button
+    onClick={handleAddComment}
+    disabled={!newComment.trim() || addCommentMutation.isPending}
+    size="sm"
+    className="w-full"
+  >
+    {addCommentMutation.isPending ? (
+      <>
+        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+        Enviando...
+      </>
+    ) : (
+      <>
+        <MessageSquare className="h-4 w-4 mr-2" />
+        Comentar
+      </>
+    )}
+  </Button>
+</div>
+      
+    </div>
 
-              {/* Lista de comentarios */}
-              <div className="space-y-4">
-                {actionPlan.comments.map((comment) => (
-                  <div key={comment.id} className="border-l-2 border-muted pl-4 py-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-xs">
-                          {comment.authorName.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium">{comment.authorName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(comment.createdAt), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
-                      </span>
-                    </div>
+    <Separator />
+
+    {/* Lista de comentarios */}
+    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+      {actionPlan.comments.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">
+          <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+          <p className="font-medium mb-1">No hay comentarios</p>
+          <p className="text-sm">Sé el primero en comentar</p>
+        </div>
+      ) : (
+        actionPlan.comments.map((comment) => (
+          <div key={comment.id} className="border-l-2 border-primary/30 pl-4 py-2 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="text-xs">
+                  {comment.authorName.split(' ').map(n => n[0]).join('')}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium">{comment.authorName}</span>
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(comment.createdAt), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
+              </span>
+            </div>
+            
+            <p className="text-sm leading-relaxed">{comment.content}</p>
+            
+            {/* Archivos adjuntos */}
+            {comment.attachments && comment.attachments.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Archivos adjuntos ({comment.attachments.length})
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {comment.attachments.map((attachment) => {
+                    const isImage = attachment.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
                     
-                    <p className="text-sm mb-2">{comment.content}</p>
-                    
-                    {/* Display de archivos adjuntos */}
-                    {comment.attachments && comment.attachments.length > 0 && (
-                      <div className="space-y-1">
-                        {comment.attachments.map((attachment) => (
-                          <div 
-                            key={attachment.id} 
-                            className="flex items-center gap-2 p-2 bg-muted/30 rounded-md border text-sm"
-                          >
-                            {getFileIcon(attachment.filename)}
-                            <span className="text-sm text-muted-foreground flex-1">
-                              {attachment.filename}
-                            </span>
-                            <Button
-                              variant="ghost" 
-                              size="sm"
-                              asChild
-                              className="h-8 w-8 p-0"
-                            >
-                              <a 
-                                href={attachment.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                download={attachment.filename}
-                              >
-                                <Download className="h-4 w-4" />
-                              </a>
-                            </Button>
+                    return (
+                      <a
+                        key={attachment.id}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded-lg border hover:border-primary/50 transition-all"
+                      >
+                        {isImage ? (
+                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                            <img 
+                              src={attachment.url} 
+                              alt={attachment.filename}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            {getFileIcon(attachment.filename)}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">
+                            {attachment.filename}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Ver archivo
+                          </p>
+                        </div>
+                        <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                      </a>
+                    );
+                  })}
+                </div>
               </div>
-            </CardContent>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  </CardContent>
           </Card>
         </div>
       </div>

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -30,6 +30,7 @@ import { MessageSquare, Send, Edit3, Trash2, Save } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { IncidentHistory } from "./IncidentHistory";
 import { DeleteIncidentDialog } from '@/components/DeleteIncidentDialog';
+
 
 interface IncidentDetailProps {
   incident: IncidentWithDetails;
@@ -80,6 +81,9 @@ export function IncidentDetail({ incident, onClose }: IncidentDetailProps) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+
+const [selectedStatus, setSelectedStatus] = useState<string>(incident.status);
 
 useEffect(() => {
   fetchCurrentUser();
@@ -133,7 +137,7 @@ const updateIncidentMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     
     // Cerrar el modal después de actualizar
-    onClose();
+ 
   },
   onError: () => {
     toast({
@@ -199,16 +203,7 @@ const createActionPlanMutation = useMutation({
 
 const canDeleteIncident = () => {
   if (!currentUser) return false;
-  
-  const userRole = currentUser.role;
-  const isReporter = currentUser.id === incident.reporterId;
-  
-  return (
-    userRole === 'admin' || 
-    userRole === 'manager' || 
-    userRole === 'supervisor' ||
-    isReporter
-  );
+  return currentUser.role === 'admin';
 };
 
   // CORREGIDO: handleGetUploadParameters
@@ -265,6 +260,29 @@ const canDeleteIncident = () => {
       });
     }
   };
+
+const handleFileUpload = async (files: File[]) => {
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+
+  if (!response.ok) throw new Error('Error uploading');
+
+  const { files: uploadedPaths } = await response.json();
+  
+  const currentFiles = incident.evidenceFiles || [];
+  await updateIncidentMutation.mutateAsync({
+    evidenceFiles: [...currentFiles, ...uploadedPaths],
+  });
+  
+  queryClient.invalidateQueries({ queryKey: [`/api/incidents/${incident.id}`] });
+};
 
   const onUpdateRootCause = (data: any) => {
     updateIncidentMutation.mutate({ rootCause: data.rootCause });
@@ -524,7 +542,10 @@ return (
             </div>
           </div>
           
-        
+            <DialogDescription className="sr-only">
+            Detalles completos de la incidencia {incident.incidentNumber}
+          </DialogDescription>
+             
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -537,134 +558,167 @@ return (
             <TabsTrigger value="evidence">Evidencia</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="details" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Basic Information */}
-              <div className="lg:col-span-2">
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground mb-3">Información Básica</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Centro/Tienda</p>
-                          <p className="font-medium">{incident.center?.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Tipo</p>
-                          <p className="font-medium">{incident.type?.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Reportado por</p>
-                          <p className="font-medium">{incident.reporter?.firstName || incident.reporter?.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Fecha de Reporte</p>
-                          <p className="font-medium">{formatDate(incident.createdAt?.toString() || new Date().toISOString())}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+    
 
-                <Card className="mt-4">
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground mb-3">Descripción</h3>
-                    <p className="text-sm text-foreground">{incident.description}</p>
-                  </CardContent>
-                </Card>
+<TabsContent value="details" className="space-y-6">
+  {/* Información Principal */}
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <MapPin className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground mb-1">Centro/Tienda</p>
+            <p className="font-semibold truncate">{incident.center?.name}</p>
+            <p className="text-xs text-muted-foreground">{incident.center?.code}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
-                {/* Root Cause Analysis */}
-                <Card className="mt-4">
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground mb-3">Análisis de Causa Raíz</h3>
-                    <Form {...rootCauseForm}>
-                      <form onSubmit={rootCauseForm.handleSubmit(onUpdateRootCause)} className="space-y-3">
-                        <FormField
-                          control={rootCauseForm.control}
-                          name="rootCause"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Textarea
-                                  rows={3}
-                                  placeholder="Describir el análisis de la causa raíz..."
-                                  {...field}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" size="sm" disabled={updateIncidentMutation.isPending}>
-                          {updateIncidentMutation.isPending ? "Guardando..." : "Guardar Análisis"}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </div>
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <AlertCircle className="h-5 w-5 text-purple-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground mb-1">Tipo</p>
+            <p className="font-semibold truncate">{incident.type?.name}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
-              {/* Evidence */}
-              <div>
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
-                    <div className="space-y-3">
-                      <EvidenceViewer 
-                        files={incident.evidenceFiles || []} 
-                        className="mb-4"
-                      />
-                      
-                      <ObjectUploader
-                        maxNumberOfFiles={5}
-                        maxFileSize={10485760}
-                        onGetUploadParameters={handleGetUploadParameters}
-                        onComplete={handleUploadComplete}
-                        buttonClassName="w-full border border-dashed border-muted-foreground/25 rounded-md p-3 text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Camera className="h-4 w-4" />
-                          <span>Agregar Evidencia</span>
-                        </div>
-                      </ObjectUploader>
-                    </div>
-                  </CardContent>
-                </Card>
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-green-100 rounded-lg">
+            <User className="h-5 w-5 text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground mb-1">Reportado por</p>
+            <p className="font-semibold truncate">{incident.reporter?.firstName} {incident.reporter?.lastName}</p>
+            <p className="text-xs text-muted-foreground truncate">{incident.reporter?.email}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
-                {/* Actions */}
-                <Card className="mt-4">
-                  <CardContent className="p-4">
-                    <div className="space-y-2">
-                      <Button 
-                        className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                        onClick={() => updateIncidentMutation.mutate({ status: "completado" })}
-                        disabled={updateIncidentMutation.isPending}
-                      >
-                        Marcar como Completada
-                      </Button>
-                      <Button 
-                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={() => updateIncidentMutation.mutate({ status: "en_proceso" })}
-                        disabled={updateIncidentMutation.isPending}
-                      >
-                        Actualizar Estado
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-orange-100 rounded-lg">
+            <Calendar className="h-5 w-5 text-orange-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground mb-1">Fecha de Reporte</p>
+            <p className="font-semibold truncate">{formatDate(incident.createdAt?.toString() || new Date().toISOString())}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Descripción y Análisis */}
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold text-foreground">Descripción</h3>
+        </div>
+        <div className="prose prose-sm max-w-none">
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+            {incident.description}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <AlertCircle className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold text-foreground">Análisis de Causa Raíz</h3>
+        </div>
+        <Form {...rootCauseForm}>
+          <form onSubmit={rootCauseForm.handleSubmit(onUpdateRootCause)} className="space-y-3">
+            <FormField
+              control={rootCauseForm.control}
+              name="rootCause"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Textarea
+                      rows={5}
+                      placeholder="Describir el análisis de la causa raíz..."
+                      {...field}
+                      className="resize-none"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <Button 
+              type="submit" 
+              size="sm" 
+              disabled={updateIncidentMutation.isPending}
+              className="w-full"
+            >
+              {updateIncidentMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Guardar Análisis"
+              )}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Acciones Rápidas */}
+  <Card className="hover:shadow-md transition-shadow bg-gradient-to-br from-primary/5 to-primary/10">
+    <CardContent className="p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Clock className="h-5 w-5 text-primary" />
+        <h3 className="text-lg font-semibold text-foreground">Acciones Rápidas</h3>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <Button 
+          className="w-full justify-start"
+          variant="outline"
+          onClick={() => setShowStatusModal(true)}
+        >
+          <Clock className="h-4 w-4 mr-2" />
+          Actualizar Estado
+        </Button>
+        <Button 
+          className="w-full justify-start"
+          variant="outline"
+          onClick={() => setActiveTab('action-plans')}
+        >
+          <ListCheck className="h-4 w-4 mr-2" />
+          Ver Planes de Acción
+        </Button>
+        <Button 
+          className="w-full justify-start"
+          variant="outline"
+          onClick={() => setActiveTab('evidence')}
+        >
+          <Camera className="h-4 w-4 mr-2" />
+          Ver Evidencias
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+</TabsContent>
 
           <TabsContent value="action-plans" className="space-y-4">
             <ActionPlansSection 
@@ -869,29 +923,20 @@ return (
               </CardContent>
             </Card>
           </TabsContent>
-
-          <TabsContent value="evidence" className="space-y-4">
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
-                <EvidenceViewer 
-                  files={incident.evidenceFiles || []} 
-                  className="mb-4"
-                />
-                
-                <ObjectUploader
-                  maxNumberOfFiles={5}
-                  maxFileSize={10485760}
-                  onGetUploadParameters={handleGetUploadParameters}
-                  onComplete={handleUploadComplete}
-                  buttonClassName="w-full h-32 border border-dashed border-muted-foreground/25 rounded-md flex flex-col items-center justify-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                >
-                  <Camera className="h-8 w-8 mb-2" />
-                  <span>Agregar Evidencia</span>
-                </ObjectUploader>
-              </CardContent>
-            </Card>
-          </TabsContent>
+<TabsContent value="evidence" className="space-y-4">
+  <Card>
+    <CardContent className="p-4">
+      <h3 className="font-semibold text-foreground mb-3">Evidencias</h3>
+      <EvidenceViewer 
+        files={incident.evidenceFiles || []} 
+        allowUpload={true}
+        onFileUpload={handleFileUpload}
+        maxFileSize={10}
+      />
+    </CardContent>
+  </Card>
+</TabsContent>
+      
         </Tabs>
  <div className="border-t p-4 bg-gray-50 flex justify-between items-center">
           <div className="text-sm text-muted-foreground">
@@ -918,6 +963,48 @@ return (
         </div>
         
       </DialogContent>
+
+      {/* Modal para actualizar estado */}
+<Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle>Actualizar Estado de Incidencia</DialogTitle>
+    </DialogHeader>
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Seleccionar nuevo estado</label>
+        <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value)}>
+          
+          <SelectTrigger>
+            <SelectValue placeholder="Seleccionar estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="reportado">Reportada</SelectItem>
+            <SelectItem value="asignado">Asignada</SelectItem>
+            <SelectItem value="en_proceso">En Progreso</SelectItem>
+            <SelectItem value="pendiente_aprobacion">Pendiente Aprobación</SelectItem>
+            <SelectItem value="completado">Completada</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => setShowStatusModal(false)}>
+          Cancelar
+        </Button>
+        <Button 
+          onClick={() => {
+            updateIncidentMutation.mutate({ status: selectedStatus });
+            setShowStatusModal(false);
+          }}
+          disabled={updateIncidentMutation.isPending || selectedStatus === incident.status}
+        >
+          {updateIncidentMutation.isPending ? "Actualizando..." : "Actualizar"}
+        </Button>
+      </div>
+    </div>
+  </DialogContent>
+</Dialog>
+
     </Dialog>
 
     {/* Dialog de confirmación de eliminación */}

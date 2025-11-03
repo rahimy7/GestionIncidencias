@@ -61,6 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 
 
 interface Incident {
@@ -180,9 +181,32 @@ interface ActionPlan {
 }
 
 export function ManagerDashboard() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => {
+  // Leer el tab guardado en localStorage al inicializar
+  const savedTab = localStorage.getItem('managerDashboardActiveTab');
+  return savedTab || "overview";
+});
+
+// Función para cambiar el tab y guardarlo
+const handleTabChange = (newTab: string) => {
+  setActiveTab(newTab);
+  localStorage.setItem('managerDashboardActiveTab', newTab);
+};
+
+// Función para navegar a incidencias con filtro
+const goToIncidentsWithFilter = (filterType: 'status' | 'priority', filterValue: string) => {
+  handleTabChange('incidents');
+  if (filterType === 'status') {
+    setStatusFilter(filterValue);
+    setPriorityFilter('all');
+  } else {
+    setPriorityFilter(filterValue);
+    setStatusFilter('all');
+  }
+};
   
   // Estados para filtros en la sección de incidencias
   const [searchTerm, setSearchTerm] = useState("");
@@ -239,6 +263,9 @@ export function ManagerDashboard() {
     },
     enabled: !!user,
     retry: 1,
+    refetchOnWindowFocus: true,  
+  refetchOnMount: true,     
+  staleTime: 0,  
   });
 
   // Obtener estadísticas detalladas del centro
@@ -263,6 +290,9 @@ export function ManagerDashboard() {
     },
     enabled: !!user,
     retry: 1,
+     refetchOnWindowFocus: true,  // ✅ AGREGAR
+  refetchOnMount: true,         // ✅ AGREGAR
+  staleTime: 0, 
   });
 
   const [actionPlanSearchTerm, setActionPlanSearchTerm] = useState("");
@@ -292,6 +322,9 @@ const { data: centerActionPlans, isLoading: actionPlansLoading } = useQuery({
   },
   enabled: !!user && !!centerInfo?.id,
   retry: 1,
+   refetchOnWindowFocus: true,  // ✅ AGREGAR
+  refetchOnMount: true,         // ✅ AGREGAR
+  staleTime: 0,  
 });
 
 // Procesar y filtrar planes de acción
@@ -359,7 +392,7 @@ const getActionPlanStatusColor = (status: string) => {
   switch (status) {
     case 'pendiente': return 'text-gray-600';
     case 'en_proceso': return 'text-blue-600';
-    case 'completed': return 'text-green-600';
+    case 'completada': return 'text-green-600';
     case 'retrasado': return 'text-red-600';
     default: return 'text-gray-600';
   }
@@ -567,7 +600,7 @@ const isretrasado = (dueDate: string, status: string) => {
         </div>
 
         {/* Tabs para organizar el contenido */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Resumen</TabsTrigger>
             <TabsTrigger value="incidents">Incidencias ({totalIncidents})</TabsTrigger>
@@ -575,76 +608,76 @@ const isretrasado = (dueDate: string, status: string) => {
             <TabsTrigger value="performance">Rendimiento</TabsTrigger>
           </TabsList>
 
-          {/* Tab: Resumen General */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Tarjetas de estadísticas principales */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Total Incidencias</p>
-                      <p className="text-2xl font-bold">{totalIncidents}</p>
-                    </div>
-                    <FileText className="h-8 w-8 text-blue-600" />
-                  </div>
-                  <div className="flex items-center mt-2">
-                    {getTrendIcon(totalIncidents, trendData[trendData.length - 2]?.incidents || 0)}
-                    <span className="text-xs text-muted-foreground ml-1">vs mes anterior</span>
-                  </div>
-                </CardContent>
-              </Card>
+        {/* Tab: Resumen General */}
+<TabsContent value="overview" className="space-y-6">
+  {/* Tarjetas de estadísticas principales */}
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => goToIncidentsWithFilter('status', 'all')}>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Total Incidencias</p>
+            <p className="text-2xl font-bold">{totalIncidents}</p>
+          </div>
+          <FileText className="h-8 w-8 text-blue-600" />
+        </div>
+        <div className="flex items-center mt-2">
+          {getTrendIcon(totalIncidents, trendData[trendData.length - 2]?.incidents || 0)}
+          <span className="text-xs text-muted-foreground ml-1">vs mes anterior</span>
+        </div>
+      </CardContent>
+    </Card>
 
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
-                      <p className="text-2xl font-bold">{inProgressIncidents.length}</p>
-                    </div>
-                    <Clock className="h-8 w-8 text-yellow-600" />
-                  </div>
-                  <div className="flex items-center mt-2">
-                    <Activity className="h-4 w-4 text-blue-600" />
-                    <span className="text-xs text-muted-foreground ml-1">requieren atención</span>
-                  </div>
-                </CardContent>
-              </Card>
+    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => goToIncidentsWithFilter('status', 'en_proceso')}>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
+            <p className="text-2xl font-bold">{inProgressIncidents.length}</p>
+          </div>
+          <Clock className="h-8 w-8 text-yellow-600" />
+        </div>
+        <div className="flex items-center mt-2">
+          <Activity className="h-4 w-4 text-blue-600" />
+          <span className="text-xs text-muted-foreground ml-1">requieren atención</span>
+        </div>
+      </CardContent>
+    </Card>
 
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Completadas</p>
-                      <p className="text-2xl font-bold">{completedIncidents.length}</p>
-                    </div>
-                    <CheckCircle2 className="h-8 w-8 text-green-600" />
-                  </div>
-                  <div className="flex items-center mt-2">
-                    <Target className="h-4 w-4 text-green-600" />
-                    <span className="text-xs text-muted-foreground ml-1">
-                      {totalIncidents > 0 ? Math.round((completedIncidents.length / totalIncidents) * 100) : 0}% tasa de resolución
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => goToIncidentsWithFilter('status', 'completado')}>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Completadas</p>
+            <p className="text-2xl font-bold">{completedIncidents.length}</p>
+          </div>
+          <CheckCircle2 className="h-8 w-8 text-green-600" />
+        </div>
+        <div className="flex items-center mt-2">
+          <Target className="h-4 w-4 text-green-600" />
+          <span className="text-xs text-muted-foreground ml-1">
+            {totalIncidents > 0 ? Math.round((completedIncidents.length / totalIncidents) * 100) : 0}% tasa de resolución
+          </span>
+        </div>
+      </CardContent>
+    </Card>
 
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Críticas</p>
-                      <p className="text-2xl font-bold">{criticalIncidents.length}</p>
-                    </div>
-                    <AlertCircle className="h-8 w-8 text-red-600" />
-                  </div>
-                  <div className="flex items-center mt-2">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <span className="text-xs text-muted-foreground ml-1">atención urgente</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => goToIncidentsWithFilter('priority', 'critica')}>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Críticas</p>
+            <p className="text-2xl font-bold">{criticalIncidents.length}</p>
+          </div>
+          <AlertCircle className="h-8 w-8 text-red-600" />
+        </div>
+        <div className="flex items-center mt-2">
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+          <span className="text-xs text-muted-foreground ml-1">atención urgente</span>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
 
             {/* Gráficos de resumen */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -754,33 +787,45 @@ const isretrasado = (dueDate: string, status: string) => {
                     </div>
 
                     {/* Filtro por estado */}
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos los estados</SelectItem>
-                        <SelectItem value="reportado">Reportada</SelectItem>
-                        <SelectItem value="asignado">Asignada</SelectItem>
-                        <SelectItem value="en_proceso">En Progreso</SelectItem>
-                        <SelectItem value="pendiente_aprobacion">Pendiente Aprobación</SelectItem>
-                        <SelectItem value="completado">Completada</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Select 
+  value={statusFilter} 
+  onValueChange={(value) => {
+    setStatusFilter(value);
+    if (value !== "all") setPriorityFilter("all"); // Limpiar prioridad
+  }}
+>
+  <SelectTrigger>
+    <SelectValue placeholder="Estado" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">Todos los estados</SelectItem>
+    <SelectItem value="reportado">Reportada</SelectItem>
+    <SelectItem value="asignado">Asignada</SelectItem>
+    <SelectItem value="en_proceso">En Progreso</SelectItem>
+    <SelectItem value="pendiente_aprobacion">Pendiente Aprobación</SelectItem>
+    <SelectItem value="completado">Completada</SelectItem>
+  </SelectContent>
+</Select>
 
                     {/* Filtro por prioridad */}
-                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Prioridad" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas las prioridades</SelectItem>
-                        <SelectItem value="critica">Crítica</SelectItem>
-                        <SelectItem value="alta">Alta</SelectItem>
-                        <SelectItem value="media">Media</SelectItem>
-                        <SelectItem value="baja">Baja</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Select 
+  value={priorityFilter} 
+  onValueChange={(value) => {
+    setPriorityFilter(value);
+    if (value !== "all") setStatusFilter("all"); // Limpiar estado
+  }}
+>
+  <SelectTrigger>
+    <SelectValue placeholder="Prioridad" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">Todas las prioridades</SelectItem>
+    <SelectItem value="critica">Crítica</SelectItem>
+    <SelectItem value="alta">Alta</SelectItem>
+    <SelectItem value="media">Media</SelectItem>
+    <SelectItem value="baja">Baja</SelectItem>
+  </SelectContent>
+</Select>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -843,28 +888,16 @@ const isretrasado = (dueDate: string, status: string) => {
                 </CardContent>
               </Card>
 
-              <Card className="cursor-pointer" onClick={() => setPriorityFilter("critical")}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <AlertCircle className="h-6 w-6 text-red-600" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Críticas</p>
-                      <p className="text-xl font-bold">
-                        {filteredIncidents.filter(i => i.priority === 'critical').length}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+      
 
-              <Card className="cursor-pointer" onClick={() => setStatusFilter("completed")}>
+              <Card className="cursor-pointer" onClick={() => setStatusFilter("completado")}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-6 w-6 text-green-600" />
                     <div>
                       <p className="text-sm text-muted-foreground">Completadas</p>
                       <p className="text-xl font-bold">
-                        {filteredIncidents.filter(i => i.status === 'completed').length}
+                        {filteredIncidents.filter(i => i.status === 'completado').length}
                       </p>
                     </div>
                   </div>

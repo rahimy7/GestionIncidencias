@@ -175,7 +175,7 @@ export const actionPlans = pgTable("action_plans", {
   departmentId: varchar("department_id"),
   
   // Timeline
-  startDate: timestamp("start_date"),
+  
   dueDate: timestamp("due_date").notNull(),
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by").references(() => users.id), // AGREGAR ESTA LÍNEA

@@ -403,13 +403,14 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
   const [selectedActionPlanId, setSelectedActionPlanId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [showDateWarning, setShowDateWarning] = useState(false);
   const queryClient = useQueryClient();
   const [newPlan, setNewPlan] = useState({
     title: '',
     description: '',
     assigneeId: '',
     dueDate: '',
-    startDate: '',
+  
     priority: 'media',
     participants: [] as string[]
   });
@@ -455,6 +456,21 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
     }
   };
 
+  // ✅ FUNCIÓN PARA VALIDAR FECHA
+  const validateDueDate = (dateString: string) => {
+    if (!dateString) {
+      setShowDateWarning(false);
+      return;
+    }
+    
+    const selectedDate = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    setShowDateWarning(selectedDate <= today);
+  };
+
   const createActionPlan = async () => {
     if (!newPlan.title.trim() || !newPlan.assigneeId || !newPlan.dueDate) {
       toast({
@@ -489,12 +505,13 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
       });
       
       setShowNewPlanForm(false);
+      setShowDateWarning(false);
       setNewPlan({
         title: '',
         description: '',
         assigneeId: '',
         dueDate: '',
-        startDate: '',
+   
         priority: 'media',
         participants: []
       });
@@ -643,26 +660,27 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="startDate">Fecha de inicio</Label>
-                          <Input
-                            id="startDate"
-                            type="date"
-                            value={newPlan.startDate}
-                            onChange={(e) => setNewPlan({...newPlan, startDate: e.target.value})}
-                            className="mt-1"
-                          />
-                        </div>
-                        
+                                               
                         <div>
                           <Label htmlFor="dueDate">Fecha límite</Label>
                           <Input
                             id="dueDate"
                             type="date"
                             value={newPlan.dueDate}
-                            onChange={(e) => setNewPlan({...newPlan, dueDate: e.target.value})}
-                            className="mt-1"
+                            onChange={(e) => {
+                              setNewPlan({...newPlan, dueDate: e.target.value});
+                              validateDueDate(e.target.value);
+                            }}
+                            className={`mt-1 ${showDateWarning ? 'border-amber-500' : ''}`}
                           />
+                          {showDateWarning && (
+                            <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                              <span className="text-xs text-amber-700">
+                                La fecha límite es hoy o ya pasó. Considera seleccionar una fecha futura.
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -729,7 +747,10 @@ export function ActionPlansSection({ incident, onUpdate }: ActionPlansSectionPro
                     </Button>
                     <Button 
                       variant="outline" 
-                      onClick={() => setShowNewPlanForm(false)}
+                      onClick={() => {
+                        setShowNewPlanForm(false);
+                        setShowDateWarning(false);
+                      }}
                       className="flex-1"
                     >
                       Cancelar

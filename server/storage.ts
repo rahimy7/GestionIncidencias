@@ -456,7 +456,7 @@ async deleteIncident(id: string): Promise<void> {
       .insert(actionPlans)
       .values({
         ...actionPlan,
-        startDate: actionPlan.startDate ? new Date(actionPlan.startDate) : null,
+    
         dueDate: new Date(actionPlan.dueDate),
       })
       .returning();
@@ -697,112 +697,152 @@ async getCenterStatsDetailed(centerId: string, userId: string) {
       .where(eq(incidents.centerId, centerId));
 
     // Tendencias de los últimos 6 meses
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  // Tendencias de los últimos 6 meses
+const sixMonthsAgo = new Date();
+sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const trendData = await db
-      .select({
-        month: sql<string>`TO_CHAR(incidents.created_at, 'Mon')`,
-        monthNum: sql<number>`EXTRACT(month FROM incidents.created_at)`,
-        year: sql<number>`EXTRACT(year FROM incidents.created_at)`,
-        incidents: count(),
-        resolved: count(sql`CASE WHEN incidents.status = 'completado'THEN 1 END`)
-      })
-      .from(incidents)
-      .where(
-        and(
-          eq(incidents.centerId, centerId),
-          sql`incidents.created_at >= ${sixMonthsAgo}`
+// Incidencias creadas por mes
+const trendData = await db
+  .select({
+    month: sql<string>`TO_CHAR(incidents.created_at, 'Mon')`,
+    monthNum: sql<number>`EXTRACT(month FROM incidents.created_at)`,
+    year: sql<number>`EXTRACT(year FROM incidents.created_at)`,
+    incidents: count(),
+    resolved: count(sql`CASE WHEN incidents.status = 'completado' THEN 1 END`)
+  })
+  .from(incidents)
+  .where(
+    and(
+      eq(incidents.centerId, centerId),
+      sql`incidents.created_at >= ${sixMonthsAgo}`
+    )
+  )
+  .groupBy(
+    sql`EXTRACT(year FROM incidents.created_at)`,
+    sql`EXTRACT(month FROM incidents.created_at)`,
+    sql`TO_CHAR(incidents.created_at, 'Mon')`
+  )
+  .orderBy(
+    sql`EXTRACT(year FROM incidents.created_at)`,
+    sql`EXTRACT(month FROM incidents.created_at)`
+  );
+
+// Obtener incidencias abiertas heredadas por mes
+// Obtener incidencias abiertas heredadas por mes
+const openIncidentsData: Array<{ monthNum: number; year: number; openIncidents: number }> = [];
+
+for (let i = 0; i < 6; i++) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - i);
+  const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+  const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  
+  const [result] = await db
+    .select({
+      openIncidents: count()
+    })
+    .from(incidents)
+    .where(
+      and(
+        eq(incidents.centerId, centerId),
+        sql`${incidents.createdAt} < ${monthStart}`,
+        or(
+          sql`${incidents.status} != 'completado'`,
+          sql`${incidents.actualResolutionDate} >= ${monthStart}`
         )
       )
-      .groupBy(
-        sql`EXTRACT(year FROM incidents.created_at)`,
-        sql`EXTRACT(month FROM incidents.created_at)`,
-        sql`TO_CHAR(incidents.created_at, 'Mon')`
-      )
-      .orderBy(
-        sql`EXTRACT(year FROM incidents.created_at)`,
-        sql`EXTRACT(month FROM incidents.created_at)`
-      );
+    );
 
-    // Obtener datos de planes de acción completados por mes
-    const actionPlanTrends = await db
-      .select({
-        month: sql<string>`TO_CHAR(action_plans.completed_at, 'Mon')`,
-        monthNum: sql<number>`EXTRACT(month FROM action_plans.completed_at)`,
-        year: sql<number>`EXTRACT(year FROM action_plans.completed_at)`,
-        actionPlans: count()
-      })
-      .from(actionPlans)
-      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .where(
-        and(
-          eq(incidents.centerId, centerId),
-          eq(actionPlans.status, 'completado'),
-          sql`action_plans.completed_at >= ${sixMonthsAgo}`
-        )
-      )
-      .groupBy(
-        sql`EXTRACT(year FROM action_plans.completed_at)`,
-        sql`EXTRACT(month FROM action_plans.completed_at)`,
-        sql`TO_CHAR(action_plans.completed_at, 'Mon')`
-      )
-      .orderBy(
-        sql`EXTRACT(year FROM action_plans.completed_at)`,
-        sql`EXTRACT(month FROM action_plans.completed_at)`
-      );
+  openIncidentsData.push({
+    monthNum: date.getMonth() + 1,
+    year: date.getFullYear(),
+    openIncidents: result.openIncidents
+  });
+}
+// Obtener datos de planes de acción completados por mes
+const actionPlanTrends = await db
+  .select({
+    month: sql<string>`TO_CHAR(action_plans.completed_at, 'Mon')`,
+    monthNum: sql<number>`EXTRACT(month FROM action_plans.completed_at)`,
+    year: sql<number>`EXTRACT(year FROM action_plans.completed_at)`,
+    actionPlans: count()
+  })
+  .from(actionPlans)
+  .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+  .where(
+    and(
+      eq(incidents.centerId, centerId),
+      eq(actionPlans.status, 'completado'),
+      sql`action_plans.completed_at >= ${sixMonthsAgo}`
+    )
+  )
+  .groupBy(
+    sql`EXTRACT(year FROM action_plans.completed_at)`,
+    sql`EXTRACT(month FROM action_plans.completed_at)`,
+    sql`TO_CHAR(action_plans.completed_at, 'Mon')`
+  )
+  .orderBy(
+    sql`EXTRACT(year FROM action_plans.completed_at)`,
+    sql`EXTRACT(month FROM action_plans.completed_at)`
+  );
 
-    // Obtener datos de tareas completadas por mes
-    const taskTrends = await db
-      .select({
-        month: sql<string>`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`,
-        monthNum: sql<number>`EXTRACT(month FROM action_plan_tasks.completed_at)`,
-        year: sql<number>`EXTRACT(year FROM action_plan_tasks.completed_at)`,
-        tasksCompleted: count()
-      })
-      .from(actionPlanTasks)
-      .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
-      .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
-      .where(
-        and(
-          eq(incidents.centerId, centerId),
-          eq(actionPlanTasks.status, 'completed'),
-          sql`action_plan_tasks.completed_at >= ${sixMonthsAgo}`
-        )
-      )
-      .groupBy(
-        sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
-        sql`EXTRACT(month FROM action_plan_tasks.completed_at)`,
-        sql`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`
-      )
-      .orderBy(
-        sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
-        sql`EXTRACT(month FROM action_plan_tasks.completed_at)`
-      );
+// Obtener datos de tareas completadas por mes
+const taskTrends = await db
+  .select({
+    month: sql<string>`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`,
+    monthNum: sql<number>`EXTRACT(month FROM action_plan_tasks.completed_at)`,
+    year: sql<number>`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+    tasksCompleted: count()
+  })
+  .from(actionPlanTasks)
+  .leftJoin(actionPlans, eq(actionPlanTasks.actionPlanId, actionPlans.id))
+  .leftJoin(incidents, eq(actionPlans.incidentId, incidents.id))
+  .where(
+    and(
+      eq(incidents.centerId, centerId),
+      eq(actionPlanTasks.status, 'completado'),
+      sql`action_plan_tasks.completed_at >= ${sixMonthsAgo}`
+    )
+  )
+  .groupBy(
+    sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+    sql`EXTRACT(month FROM action_plan_tasks.completed_at)`,
+    sql`TO_CHAR(action_plan_tasks.completed_at, 'Mon')`
+  )
+  .orderBy(
+    sql`EXTRACT(year FROM action_plan_tasks.completed_at)`,
+    sql`EXTRACT(month FROM action_plan_tasks.completed_at)`
+  );
 
-    // Combinar datos de tendencias
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const trends = [];
-    
-    for (let i = 0; i < 6; i++) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const monthName = months[date.getMonth()];
-      const monthNum = date.getMonth() + 1;
-      const year = date.getFullYear();
+// Combinar datos de tendencias
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const trends = [];
 
-      const incidentData = trendData.find(t => t.monthNum === monthNum && t.year === year);
-      const actionPlanData = actionPlanTrends.find(t => t.monthNum === monthNum && t.year === year);
-      const taskData = taskTrends.find(t => t.monthNum === monthNum && t.year === year);
+for (let i = 0; i < 6; i++) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - i);
+  const monthName = months[date.getMonth()];
+  const monthNum = date.getMonth() + 1;
+  const year = date.getFullYear();
 
-      trends.unshift({
-        month: monthName,
-        incidents: incidentData?.incidents || 0,
-        resolved: incidentData?.resolved || 0,
-        actionPlans: actionPlanData?.actionPlans || 0,
-        tasksCompleted: taskData?.tasksCompleted || 0
-      });
-    }
+  const incidentData = trendData.find(t => t.monthNum === monthNum && t.year === year);
+  const openData = openIncidentsData.find(t => t.monthNum === monthNum && t.year === year);
+  const actionPlanData = actionPlanTrends.find(t => t.monthNum === monthNum && t.year === year);
+  const taskData = taskTrends.find(t => t.monthNum === monthNum && t.year === year);
+
+  const newIncidents = incidentData?.incidents || 0;
+  const inheritedOpen = openData?.openIncidents || 0;
+
+  trends.unshift({
+    month: monthName,
+    incidents: newIncidents + inheritedOpen, // Nuevas + heredadas abiertas
+    resolved: incidentData?.resolved || 0,
+    actionPlans: actionPlanData?.actionPlans || 0,
+    tasksCompleted: taskData?.tasksCompleted || 0
+  });
+}
+
+  
 
     // Calcular métricas de rendimiento
     const completionRate = incidentStats.total > 0 
@@ -2128,16 +2168,32 @@ async getActionPlanDetails(actionPlanId: string, userId: string) {
       .orderBy(actionPlanComments.createdAt);
 
     // ✅ FIX: Manejar usuarios null y eliminar attachments
-    const comments = commentsData
-      .filter(c => c.users !== null) // Filtrar comentarios sin usuario
-      .map(c => ({
-        id: c.action_plan_comments.id,
-        content: c.action_plan_comments.content,
-        authorId: c.action_plan_comments.authorId,
-        authorName: `${c.users!.firstName} ${c.users!.lastName}`.trim(), // ! porque ya filtramos null
-        createdAt: c.action_plan_comments.createdAt,
-        attachments: [], // ✅ FIX: Por ahora vacío, no existe en el schema
-      }));
+   // Obtener comentarios con attachments
+const comments = [];
+for (const commentRow of commentsData) {
+  if (!commentRow.users) continue; // Skip comments without user
+  
+  // ✅ FIX: Cargar attachments de cada comentario
+  const attachments = await db
+    .select()
+    .from(commentAttachments)
+    .where(eq(commentAttachments.commentId, commentRow.action_plan_comments.id));
+
+  comments.push({
+    id: commentRow.action_plan_comments.id,
+    content: commentRow.action_plan_comments.content,
+    authorId: commentRow.action_plan_comments.authorId,
+    authorName: `${commentRow.users.firstName} ${commentRow.users.lastName}`.trim(),
+    createdAt: commentRow.action_plan_comments.createdAt,
+    attachments: attachments.map(a => ({
+      id: a.id,
+      filename: a.filename,
+      url: a.url,
+      uploadedAt: a.uploadedAt,
+      uploadedBy: a.uploadedBy,
+    })),
+  });
+}
 
     // Calcular progreso
     const completedTasks = tasks.filter(t => t.status === 'completed');

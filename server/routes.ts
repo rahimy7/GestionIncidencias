@@ -805,7 +805,19 @@ app.post("/api/incidents/:id/action-plans", isAuthenticated, async (req: any, re
       // Crear el plan de acción
       const actionPlan = await storage.createActionPlan(validatedData);
       console.log("Action plan created:", actionPlan);
-
+ await storage.addIncidentHistory({
+      incidentId: id,
+      userId: userId,
+      action: "action_plan_created",
+      description: `Plan de acción creado: ${actionPlan.title}`,
+      metadata: {
+        actionPlanId: actionPlan.id,
+        title: actionPlan.title,
+        assigneeId: actionPlan.assigneeId,
+        dueDate: actionPlan.dueDate
+      },
+    });
+    console.log('✅ Action plan created and logged to history');
       res.status(201).json(actionPlan);
     } catch (schemaError) {
       console.error("Schema validation error:", schemaError);
@@ -1410,38 +1422,21 @@ app.put("/api/centers/:id", isAuthenticated, async (req: any, res) => {
 });
 
 // Endpoint para subir archivos
-app.post('/api/upload', isAuthenticated, upload.single('file'), async (req: RequestWithFile, res) => {
+app.post('/api/upload', isAuthenticated, upload.array('files', 5), async (req: RequestWithFile, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No se proporcionó archivo' });
+    if (!req.files || !Array.isArray(req.files)) {
+      return res.status(400).json({ message: 'No se proporcionaron archivos' });
     }
 
-    const { incidentId } = req.body;
-    if (!incidentId) {
-      return res.status(400).json({ message: 'ID de incidencia requerido' });
-    }
-
-    // Construir URL del archivo
-    const fileUrl = `/uploads/${req.file.filename}`;
+    const filePaths = req.files.map(file => `/uploads/${file.filename}`);
     
-    // Guardar referencia del archivo en la base de datos si tienes tabla de attachments
-    // await storage.createAttachment({
-    //   incidentId,
-    //   filename: req.file.filename,
-    //   originalName: req.file.originalname,
-    //   mimetype: req.file.mimetype,
-    //   size: req.file.size,
-    //   url: fileUrl
-    // });
-
     res.json({
-      message: 'Archivo subido exitosamente',
-      url: fileUrl,
-      filename: req.file.filename
+      message: 'Archivos subidos exitosamente',
+      files: filePaths
     });
 
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error('Error uploading files:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 });
@@ -1690,6 +1685,7 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
   try {
     const planId = req.params.id;
     const userId = req.user.id;
+    
     console.log(`📝 User ${userId} updating action plan ${planId} status`);
     
     // Validar datos de entrada
@@ -1746,6 +1742,20 @@ app.put('/api/action-plans/:id/status', isAuthenticated, async (req: any, res) =
       completedAt: status === 'completado' ? new Date() : (completedAt ? new Date(completedAt) : null),
       completedBy: status === 'completado' ? userId : null
     });
+
+ await storage.addIncidentHistory({
+      incidentId: actionPlan.incidentId,
+      userId: userId,
+      action: "action_plan_status_changed",
+      description: `Plan de acción "${actionPlan.title}" cambió a estado: ${status}`,
+      metadata: {
+        actionPlanId: planId,
+        oldStatus: actionPlan.status,
+        newStatus: finalStatus,
+        title: actionPlan.title
+      },
+    });
+
 
     console.log('✅ Action plan status updated successfully');
     res.json(updatedPlan);
