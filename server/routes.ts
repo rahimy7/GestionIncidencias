@@ -1059,7 +1059,14 @@ app.put("/api/users/:id", isAuthenticated, async (req: any, res) => {
       updates.password = await hashPassword(updates.password);
     }
 
-    const updatedUser = await storage.updateUser(id, updates);
+    const cleanUpdates: any = {};
+Object.keys(updates).forEach(key => {
+  if (updates[key] !== undefined) {
+    cleanUpdates[key] = updates[key];
+  }
+});
+
+const updatedUser = await storage.updateUser(id, cleanUpdates);
     
     // No devolver la contraseña
     const { password, ...userWithoutPassword } = updatedUser;
@@ -2027,7 +2034,8 @@ app.patch('/api/action-plans/:id/tasks/:taskId',
       }
       
       // Actualizar la tarea
-      const updatedTask = await storage.updateActionPlanTask(taskId, updates);
+      const updatedTask = await storage.updateActionPlanTask(taskId, updates, userId);
+
       
       // Actualizar progreso del plan
       await storage.updateActionPlanProgress(id);

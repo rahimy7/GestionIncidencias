@@ -924,7 +924,7 @@ async getActionPlansByCenter(centerId: string) {
         .from(actionPlanTasks)
         .where(eq(actionPlanTasks.actionPlanId, row.actionPlan.id));
 
-      const completedTasks = allTasks.filter(t => t.status === 'completed');
+      const completedTasks = allTasks.filter(t => t.status === 'completado');
       
       // Obtener número de comentarios
       const comments = await db
@@ -2196,7 +2196,7 @@ for (const commentRow of commentsData) {
 }
 
     // Calcular progreso
-    const completedTasks = tasks.filter(t => t.status === 'completed');
+    const completedTasks = tasks.filter(t => t.status === 'completado');
     const progress = tasks.length > 0 
       ? (completedTasks.length / tasks.length) * 100 
       : 0;
@@ -2560,7 +2560,7 @@ async updateActionPlanProgress(actionPlanId: string) {
       .from(actionPlanTasks)
       .where(eq(actionPlanTasks.actionPlanId, actionPlanId));
 
-    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const completedTasks = tasks.filter(t => t.status === 'completado').length;
     const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
 
     // Actualizar estado del plan si es necesario
@@ -2678,7 +2678,8 @@ async updateActionPlanTask(taskId: string, updates: {
   completedAt?: Date | null;
   completedBy?: string | null;
   evidence?: string[];
-}) {
+},
+  userId: string ) {
   try {
     console.log('📝 Updating task:', { taskId, updates });
     
@@ -2703,7 +2704,7 @@ async updateActionPlanTask(taskId: string, updates: {
           filename: evidenceUrl.split('/').pop() || 'evidence',
           url: evidenceUrl,
           uploadedAt: new Date(),
-          uploadedBy: updates.completedBy || '',
+          uploadedBy: userId,
         });
       }
     }
@@ -2760,7 +2761,7 @@ async areAllTasksCompleted(actionPlanId: string): Promise<boolean> {
       return true;
     }
 
-    return tasks.every(task => task.status === 'completed');
+    return tasks.every(task => task.status === 'completado');
   } catch (error) {
     console.error('Error checking if all tasks are completed:', error);
     return false;
@@ -2969,7 +2970,9 @@ async getActionPlansByUser(userId: string) {
         .from(actionPlanTasks)
         .where(eq(actionPlanTasks.actionPlanId, planRow.action_plans.id));
 
-      const completedTasks = allTasks.filter(t => t.status === 'completed');
+    
+      const completedTasks = allTasks.filter(t => t.status === 'completado');
+
       
       // Obtener número de comentarios
       const comments = await db

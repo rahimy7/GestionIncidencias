@@ -31,7 +31,7 @@ const getActionIcon = (action: string) => {
     case 'status_change': return <Clock className="h-4 w-4" />;
     case 'priority_change': return <Flag className="h-4 w-4" />;
     case 'root_cause_updated': return <FileText className="h-4 w-4" />;
-    case 'completed': return <CheckCircle className="h-4 w-4" />;
+    case 'completado': return <CheckCircle className="h-4 w-4" />;
     case 'updated': return <ImageIcon className="h-4 w-4" />;
     default: return <Clock className="h-4 w-4" />;
   }
@@ -46,7 +46,7 @@ const getActionColor = (action: string) => {
     case 'assignment_change': return 'bg-green-100 text-green-700 border-green-300';
     case 'status_change': return 'bg-orange-100 text-orange-700 border-orange-300';
     case 'priority_change': return 'bg-red-100 text-red-700 border-red-300';
-    case 'completed': return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+    case 'completado': return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     case 'root_cause_updated': return 'bg-purple-100 text-purple-700 border-purple-300';
     case 'updated': return 'bg-cyan-100 text-cyan-700 border-cyan-300';
     default: return 'bg-gray-100 text-gray-700 border-gray-300';
@@ -218,24 +218,38 @@ const MetadataDisplay = ({ metadata }: { metadata: any }) => {
   }
 
   // Formato genérico para otros metadatos
-  const entries = Object.entries(metadata).filter(([key]) => 
-    key !== '__typename' && metadata[key] !== null && metadata[key] !== undefined
-  );
+ const entries = Object.entries(metadata).filter(([key, value]) => 
+  key !== '__typename' && 
+  metadata[key] !== null && 
+  metadata[key] !== undefined &&
+  !key.toLowerCase().includes('id') // ← Excluir campos con 'id'
+);
 
   if (entries.length === 0) return null;
+const formatValue = (key: string, value: any): string => {
+ if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    const date = new Date(value);
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+  return String(value);
+};
 
-  return (
-    <div className="mt-2 space-y-1">
-      {entries.map(([key, value]) => (
-        <div key={key} className="flex items-center gap-2 text-xs">
-          <span className="font-medium text-gray-600 capitalize">
-            {key.replace(/([A-Z])/g, ' $1').trim()}:
-          </span>
-          <span className="text-gray-700">{String(value)}</span>
-        </div>
-      ))}
-    </div>
-  );
+return (
+  <div className="mt-2 space-y-1">
+    {entries.map(([key, value]) => (
+      <div key={key} className="flex items-center gap-2 text-xs">
+        <span className="font-medium text-gray-600 capitalize">
+          {key.replace(/([A-Z])/g, ' $1').trim()}:
+        </span>
+        <span className="text-gray-700">{formatValue(key, value)}</span>
+      </div>
+    ))}
+  </div>
+);
 };
 
 export function IncidentHistory({ incidentId }: IncidentHistoryProps) {

@@ -128,8 +128,8 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
       email: formData.email,
       role: formData.role,
       location: formData.location || undefined,
-      centerId: formData.centerId || undefined,
-      departmentId: formData.departmentId || undefined,
+      departmentId: formData.departmentId || null,
+      centerId: formData.centerId || null,
     };
 
     // Solo enviar password si se proporcionó
@@ -139,6 +139,8 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
 
     updateUserMutation.mutate(updates);
   };
+
+  
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));

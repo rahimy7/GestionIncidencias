@@ -254,7 +254,7 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all" 
+                  className="bg-green-600 h-2 rounded-full transition-all" 
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
@@ -335,18 +335,8 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
           )}
 
           {/* Acciones rápidas */}
-          {canUpdateStatus() && (
-            <div className="pt-2 border-t">
-              <Button
-                onClick={handleStatusUpdate}
-                disabled={isUpdating}
-                size="sm"
-                className="w-full"
-              >
-                {isUpdating ? 'Actualizando...' : getNextStatusText()}
-              </Button>
-            </div>
-          )}
+       
+
         </CardContent>
       </Card>
 
@@ -356,7 +346,7 @@ export function ActionPlanCard({ actionPlan }: ActionPlanCardProps) {
     actionPlanId={actionPlan.id}
     isOpen={isDetailOpen}
     onClose={() => setIsDetailOpen(false)}
-    // ✅ Ya no se pasa userRole - el componente lo obtiene del backend
+  
   />
 )}
     </>

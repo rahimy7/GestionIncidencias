@@ -390,11 +390,11 @@ const getActionPlanStatusText = (status: string) => {
 
 const getActionPlanStatusColor = (status: string) => {
   switch (status) {
-    case 'pendiente': return 'text-gray-600';
-    case 'en_proceso': return 'text-blue-600';
-    case 'completada': return 'text-green-600';
-    case 'retrasado': return 'text-red-600';
-    default: return 'text-gray-600';
+    case 'pendiente': return 'bg-gray-400 text-white';
+    case 'en_proceso': return 'bg-yellow-100 text-yellow-800';
+    case 'completado': return 'bg-green-600 text-white'; // ✅ Fondo verde, texto blanco
+    case 'retrasado': return 'bg-red-100 text-red-800';
+    default: return 'bg-gray-100 text-gray-800';
   }
 };
 
@@ -1313,7 +1313,7 @@ const isretrasado = (dueDate: string, status: string) => {
                     <div className="flex items-center gap-2">
                       <div className="w-32 bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all" 
+                          className="bg-green-600 h-2 rounded-full transition-all" 
                           style={{ width: `${plan.progress}%` }}
                         ></div>
                       </div>

@@ -36,7 +36,8 @@ import {
   User,
   AlertTriangle,
   Trash2,
-   X,
+  X,
+  Upload,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -126,6 +127,7 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -165,20 +167,24 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
       setNewTaskDescription('');
       setNewTaskDueDate('');
       setShowNewTaskForm(false);
+      toast({
+        title: "✅ Tarea creada",
+        description: "La tarea se ha agregado correctamente",
+      });
     },
   });
 
-  // Mutation para completar tarea
-  const completeTaskMutation = useMutation({
-    mutationFn: async ({ taskId, files }: { taskId: string; files?: File[] }) => {
-      const formData = new FormData();
-      formData.append('status', 'completado');
-      
-      if (files && files.length > 0) {
-        files.forEach(file => {
-          formData.append('evidence', file);
-        });
-      }
+  // Mutation para subir evidencia a una tarea (usa el PATCH existente)
+  const uploadEvidenceMutation = useMutation({
+    mutationFn: async ({ taskId, files }: { taskId: string; files: File[] }) => {
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('evidence', file);
+  });
+
+  const userId = (user as any)?.id;
+  formData.append('userId', userId); // ✅ include uploader ID
+
       
       const response = await fetch(`/api/action-plans/${actionPlanId}/tasks/${taskId}`, {
         method: 'PATCH',
@@ -188,15 +194,29 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
         body: formData,
       });
       
-      if (!response.ok) throw new Error('Error completing task');
+      if (!response.ok) throw new Error('Error al subir evidencia');
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
+      setUploadingTaskId(null);
+      toast({
+        title: "✅ Evidencia agregada",
+        description: "Los archivos se han subido correctamente",
+      });
+    },
+    onError: (error: Error) => {
+      setUploadingTaskId(null);
+      toast({
+        title: "❌ Error",
+        description: error.message || "No se pudo subir la evidencia",
+        variant: "destructive",
+      });
     },
   });
 
-  const handleCompleteTask = (taskId: string) => {
+  // 🔧 NUEVA: Función para subir evidencia
+  const handleUploadEvidence = (taskId: string) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
@@ -206,90 +226,155 @@ export function ActionPlanDetail({ actionPlanId, isOpen, onClose }: ActionPlanDe
       const files = Array.from((e.target as HTMLInputElement).files || []);
       
       if (files.length > 0) {
-        if (confirm(`¿Deseas completar la tarea con ${files.length} archivo(s) de evidencia?`)) {
-          completeTaskMutation.mutate({ taskId, files });
-        }
-      } else {
-        if (confirm('¿Deseas completar la tarea sin evidencia?')) {
-          completeTaskMutation.mutate({ taskId });
-        }
+        setUploadingTaskId(taskId);
+        uploadEvidenceMutation.mutate({ taskId, files });
       }
     };
     
     input.click();
   };
 
-  // Mutation para agregar comentario
-const addCommentMutation = useMutation({
-  mutationFn: async ({ content, files }: { content: string; files?: File[] }) => {
-    const formData = new FormData();
-    formData.append('content', content);
-    
-    if (files && files.length > 0) {
-      files.forEach(file => {
-        formData.append('attachments', file);
+  // 🔧 ACTUALIZADA: Mutation para completar tarea (sin archivos)
+  const completeTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await apiRequest(`/api/action-plans/${actionPlanId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completado' }),
       });
-    }
-    
-    const response = await fetch(`/api/action-plans/${actionPlanId}/comments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-      },
-      body: formData,
-    });
-    
-    if (!response.ok) throw new Error('Error adding comment');
-    return response.json();
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
-    setNewComment('');
-    setCommentFiles([]);
-  },
-});
-
- const handleAddComment = () => {
-  if (!newComment.trim()) return;
-  addCommentMutation.mutate({ 
-    content: newComment,
-    files: commentFiles.length > 0 ? commentFiles : undefined 
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al completar tarea');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
+      toast({
+        title: "✅ Tarea completada",
+        description: "La tarea se ha marcado como completada",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "❌ Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
-};
 
-const handleCommentFileUpload = async (files: File[]) => {
-  setCommentFiles(prev => [...prev, ...files]);
-};
+  // Función para completar tarea
+  const handleCompleteTask = (taskId: string) => {
+    if (confirm('¿Estás seguro de completar esta tarea?')) {
+      completeTaskMutation.mutate(taskId);
+    }
+  };
 
-// Reemplaza la mutación deletePlanMutation con esta:
-const deletePlanMutation = useMutation({
-  mutationFn: async () => {
-    return await apiRequest(`/api/action-plans/${actionPlanId}`, {
-      method: 'DELETE',
-    });
-  },
-  onSuccess: () => {
-    toast({
-      title: "✅ Plan eliminado",
-      description: "El plan de acción ha sido eliminado correctamente",
-    });
-    setShowDeleteDialog(false);
-    queryClient.invalidateQueries({ queryKey: ['/api/action-plans'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/incidents'] });
-    onClose(); // Cerrar el modal principal después de eliminar
-  },
-  onError: (error: Error) => {
-    toast({
-      title: "❌ Error",
-      description: error.message || "No se pudo eliminar el plan de acción",
-      variant: "destructive",
-    });
-  },
-});
+  // Mutation para eliminar tarea
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await apiRequest(`/api/action-plans/${actionPlanId}/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al eliminar tarea');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
+      toast({
+        title: "✅ Tarea eliminada",
+        description: "La tarea se ha eliminado correctamente",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "❌ Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
-// Agregar la función para verificar permisos de eliminación:
-const canDeletePlan = actionPlan?.userRole === 'responsible' || 
-                      actionPlan?.userRole === 'center_manager';
+  const handleDeleteTask = (taskId: string, taskTitle: string) => {
+    if (confirm(`¿Eliminar la tarea "${taskTitle}"? Esta acción no se puede deshacer.`)) {
+      deleteTaskMutation.mutate(taskId);
+    }
+  };
+
+  // Mutation para agregar comentario
+  const addCommentMutation = useMutation({
+    mutationFn: async ({ content, files }: { content: string; files?: File[] }) => {
+      const formData = new FormData();
+      formData.append('content', content);
+      
+      if (files && files.length > 0) {
+        files.forEach(file => {
+          formData.append('attachments', file);
+        });
+      }
+      
+      const response = await fetch(`/api/action-plans/${actionPlanId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) throw new Error('Error adding comment');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/action-plans/${actionPlanId}`] });
+      setNewComment('');
+      setCommentFiles([]);
+    },
+  });
+
+  const handleAddComment = () => {
+    if (!newComment.trim()) return;
+    addCommentMutation.mutate({ 
+      content: newComment,
+      files: commentFiles.length > 0 ? commentFiles : undefined 
+    });
+  };
+
+  const handleCommentFileUpload = async (files: File[]) => {
+    setCommentFiles(prev => [...prev, ...files]);
+  };
+
+  // Mutation para eliminar plan
+  const deletePlanMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/action-plans/${actionPlanId}`, {
+        method: 'DELETE',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "✅ Plan eliminado",
+        description: "El plan de acción ha sido eliminado correctamente",
+      });
+      setShowDeleteDialog(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/action-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/incidents'] });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "❌ Error",
+        description: error.message || "No se pudo eliminar el plan de acción",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // 🔧 ACTUALIZADO: Permisos de eliminación solo para admin y manager
+  const canDeletePlan = user?.role === 'admin' || user?.role === 'manager';
   
   // Mutation para completar plan de acción
   const completePlanMutation = useMutation({
@@ -362,13 +447,11 @@ const canDeletePlan = actionPlan?.userRole === 'responsible' ||
   };
 
   const canCompleteTask = (task: Task) => {
-    // El responsable del plan, el manager del centro, o el asignado de la tarea pueden completarla
     const isResponsibleOrManager = actionPlan?.userRole === 'responsible' || actionPlan?.userRole === 'center_manager';
     const isTaskAssignee = task.assigneeId === currentUserId;
     return isResponsibleOrManager || isTaskAssignee;
   };
 
-  // CORRECCIÓN: Incluir center_manager en los permisos
   const canAddTasks = actionPlan?.userRole === 'responsible' || actionPlan?.userRole === 'center_manager';
   const canCompletePlan = (actionPlan?.userRole === 'responsible' || actionPlan?.userRole === 'center_manager') && 
     actionPlan?.tasks.every(task => task.status === 'completado');
@@ -457,7 +540,6 @@ return (
               <CardTitle className="text-lg">Detalles del Plan</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Indicador de permisos especiales */}
               {actionPlan.userRole === 'center_manager' && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2">
                   <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
@@ -580,50 +662,125 @@ return (
               {actionPlan.tasks.map((task) => (
                 <Card key={task.id} className={`${task.status === 'completado' ? 'bg-green-50' : ''}`}>
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className={`font-medium ${task.status === 'completado' ? 'line-through text-muted-foreground' : ''}`}>
-                            {task.title}
-                          </h4>
-                          <Badge className={getStatusColor(task.status)}>
-                            {getStatusText(task.status)}
-                          </Badge>
-                          {isOverdue(task.dueDate, task.status) && (
-                            <AlertTriangle className="h-4 w-4 text-red-600" />
-                          )}
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
-                        )}
-                        
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {format(new Date(task.dueDate), 'PPP', { locale: es })}
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className={`font-medium ${task.status === 'completado' ? 'line-through text-muted-foreground' : ''}`}>
+                              {task.title}
+                            </h4>
+                            <Badge className={getStatusColor(task.status)}>
+                              {getStatusText(task.status)}
+                            </Badge>
+                            {isOverdue(task.dueDate, task.status) && (
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {task.assigneeName}
+                          
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
+                          )}
+                          
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {format(new Date(task.dueDate), 'PPP', { locale: es })}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {task.assigneeName}
+                            </div>
                           </div>
                         </div>
 
-                        
+                        {/* Botón eliminar tarea */}
+                        {canAddTasks && task.status !== 'completado' && (
+                          <Button
+                            onClick={() => handleDeleteTask(task.id, task.title)}
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            disabled={deleteTaskMutation.isPending}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
 
-                      {/* Botones de acción */}
+                      {/* Evidencias de la tarea */}
+                      {task.evidence && task.evidence.length > 0 && (
+                        <div className="bg-muted/30 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              📎 Evidencia ({task.evidence.length})
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {task.evidence.map((evidence) => {
+                              const isImage = evidence.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                              
+                              return (
+                                <a
+                                  key={evidence.id}
+                                  href={evidence.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group flex items-center gap-2 p-2 bg-background hover:bg-accent rounded border hover:border-primary/50 transition-all"
+                                >
+                                  {isImage ? (
+                                    <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0">
+                                      <img 
+                                        src={evidence.url} 
+                                        alt={evidence.filename}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                      {getFileIcon(evidence.filename)}
+                                    </div>
+                                  )}
+                                  <span className="flex-1 text-xs truncate">{evidence.filename}</span>
+                                  <Download className="h-3 w-3 text-muted-foreground group-hover:text-primary flex-shrink-0" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botones de acción para tareas no completadas */}
                       {task.status !== 'completado' && canCompleteTask(task) && (
-                        <Button
-                          onClick={() => handleCompleteTask(task.id)}
-                          size="sm"
-                          variant="outline"
-                          className="ml-2"
-                          disabled={completeTaskMutation.isPending}
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          Completar
-                        </Button>
+                        <div className="flex gap-2 pt-2 border-t">
+                          <Button
+                            onClick={() => handleUploadEvidence(task.id)}
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            disabled={uploadingTaskId === task.id}
+                          >
+                            {uploadingTaskId === task.id ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent mr-2" />
+                                Subiendo...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-4 w-4 mr-2" />
+                                Agregar Evidencia
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            onClick={() => handleCompleteTask(task.id)}
+                            size="sm"
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                            disabled={completeTaskMutation.isPending}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Completar
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </CardContent>
@@ -645,71 +802,70 @@ return (
 
         {/* Panel derecho - Participantes y comentarios */}
         <div className="space-y-6">
-          {/* Evidencias - NUEVA SECCIÓN */}
-  <Card>
-    <CardHeader>
-      <CardTitle className="text-lg flex items-center gap-2">
-        <Paperclip className="h-5 w-5" />
-        Evidencias ({actionPlan.tasks.reduce((acc, task) => acc + (task.evidence?.length || 0), 0)})
-      </CardTitle>
-    </CardHeader>
-    <CardContent>
-      {actionPlan.tasks.some(t => t.evidence && t.evidence.length > 0) ? (
-        <div className="space-y-4">
-          {actionPlan.tasks
-            .filter(task => task.evidence && task.evidence.length > 0)
-            .map(task => (
-              <div key={task.id} className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {task.title}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {task.evidence.map((evidence) => {
-                    const isImage = evidence.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                    
-                    return (
-                      <a
-                        key={evidence.id}
-                        href={evidence.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded border hover:border-primary/50 transition-all"
-                      >
-                        {isImage ? (
-                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
-                            <img 
-                              src={evidence.url} 
-                              alt={evidence.filename}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
-                            {getFileIcon(evidence.filename)}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">
-                            {evidence.filename}
-                          </p>
+          {/* Evidencias totales */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Paperclip className="h-5 w-5" />
+                Evidencias ({actionPlan.tasks.reduce((acc, task) => acc + (task.evidence?.length || 0), 0)})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {actionPlan.tasks.some(t => t.evidence && t.evidence.length > 0) ? (
+                <div className="space-y-4">
+                  {actionPlan.tasks
+                    .filter(task => task.evidence && task.evidence.length > 0)
+                    .map(task => (
+                      <div key={task.id} className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {task.title}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {task.evidence.map((evidence) => {
+                            const isImage = evidence.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                            
+                            return (
+                              <a
+                                key={evidence.id}
+                                href={evidence.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded border hover:border-primary/50 transition-all"
+                              >
+                                {isImage ? (
+                                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                                    <img 
+                                      src={evidence.url} 
+                                      alt={evidence.filename}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    {getFileIcon(evidence.filename)}
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium truncate">
+                                    {evidence.filename}
+                                  </p>
+                                </div>
+                                <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary flex-shrink-0" />
+                              </a>
+                            );
+                          })}
                         </div>
-                        <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary flex-shrink-0" />
-                      </a>
-                    );
-                  })}
+                      </div>
+                    ))}
                 </div>
-              </div>
-            ))}
-        </div>
-      ) : (
-        <div className="text-center py-6 text-muted-foreground">
-          <Paperclip className="h-10 w-10 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Sin evidencias</p>
-        </div>
-      )}
-    </CardContent>
-  </Card>
-         
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Paperclip className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Sin evidencias</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Participantes */}
           <Card>
@@ -734,324 +890,314 @@ return (
           </Card>
 
           {/* Comentarios */}
-         <Card>
-  <CardHeader>
-    <CardTitle className="text-lg">Comentarios y Evidencia</CardTitle>
-  </CardHeader>
-  <CardContent className="space-y-4">
-    {/* Formulario para nuevo comentario */}
-    <div className="space-y-3 p-4 bg-muted/30 rounded-lg border-2 border-dashed">
-      <Textarea
-        placeholder="Escribe un comentario..."
-        value={newComment}
-        onChange={(e) => setNewComment(e.target.value)}
-        rows={3}
-        className="resize-none"
-      />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Comentarios y Evidencia</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Formulario para nuevo comentario */}
+              <div className="space-y-3 p-4 bg-muted/30 rounded-lg border-2 border-dashed">
+                <Textarea
+                  placeholder="Escribe un comentario..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  rows={3}
+                  className="resize-none"
+                />
 
-      {/* Vista previa de archivos seleccionados */}
-      {commentFiles.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">
-              {commentFiles.length} archivo(s) seleccionado(s)
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCommentFiles([])}
-              className="h-6 text-xs"
-            >
-              Limpiar
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {commentFiles.map((file, index) => (
-              <div 
-                key={index}
-                className="flex items-center gap-2 p-2 bg-background rounded border text-xs"
-              >
-                <Paperclip className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="flex-1 truncate">{file.name}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-5 w-5 p-0"
-                  onClick={() => setCommentFiles(prev => prev.filter((_, i) => i !== index))}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-     {/* Botones de acción */}
-{/* Botones de acción */}
-<div className="flex flex-col gap-2">
-  <label className="w-full">
-    <input
-      type="file"
-      multiple
-      accept="image/*,application/pdf,.doc,.docx,.txt"
-      className="hidden"
-      onChange={(e) => {
-        const files = Array.from(e.target.files || []);
-        handleCommentFileUpload(files);
-        e.target.value = '';
-      }}
-    />
-    <Button
-      variant="outline"
-      size="sm"
-      className="w-full"
-      type="button"
-      onClick={(e) => {
-        e.currentTarget.parentElement?.querySelector('input')?.click();
-      }}
-    >
-      <Paperclip className="h-4 w-4 mr-2" />
-      Adjuntar archivos
-    </Button>
-  </label>
-  
-  <Button
-    onClick={handleAddComment}
-    disabled={!newComment.trim() || addCommentMutation.isPending}
-    size="sm"
-    className="w-full"
-  >
-    {addCommentMutation.isPending ? (
-      <>
-        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-        Enviando...
-      </>
-    ) : (
-      <>
-        <MessageSquare className="h-4 w-4 mr-2" />
-        Comentar
-      </>
-    )}
-  </Button>
-</div>
-      
-    </div>
-
-    <Separator />
-
-    {/* Lista de comentarios */}
-    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-      {actionPlan.comments.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-          <p className="font-medium mb-1">No hay comentarios</p>
-          <p className="text-sm">Sé el primero en comentar</p>
-        </div>
-      ) : (
-        actionPlan.comments.map((comment) => (
-          <div key={comment.id} className="border-l-2 border-primary/30 pl-4 py-2 space-y-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-xs">
-                  {comment.authorName.split(' ').map(n => n[0]).join('')}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{comment.authorName}</span>
-              <span className="text-xs text-muted-foreground">
-                {format(new Date(comment.createdAt), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
-              </span>
-            </div>
-            
-            <p className="text-sm leading-relaxed">{comment.content}</p>
-            
-            {/* Archivos adjuntos */}
-            {comment.attachments && comment.attachments.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Archivos adjuntos ({comment.attachments.length})
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {comment.attachments.map((attachment) => {
-                    const isImage = attachment.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                    
-                    return (
-                      <a
-                        key={attachment.id}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded-lg border hover:border-primary/50 transition-all"
+                {/* Vista previa de archivos */}
+                {commentFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {commentFiles.length} archivo(s)
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCommentFiles([])}
+                        className="h-6 text-xs"
                       >
-                        {isImage ? (
-                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
-                            <img 
-                              src={attachment.url} 
-                              alt={attachment.filename}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
-                            {getFileIcon(attachment.filename)}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">
-                            {attachment.filename}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Ver archivo
-                          </p>
+                        Limpiar
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {commentFiles.map((file, index) => (
+                        <div 
+                          key={index}
+                          className="flex items-center gap-2 p-2 bg-background rounded border text-xs"
+                        >
+                          <Paperclip className="h-3 w-3 flex-shrink-0" />
+                          <span className="flex-1 truncate">{file.name}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 w-5 p-0"
+                            onClick={() => setCommentFiles(prev => prev.filter((_, i) => i !== index))}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
                         </div>
-                        <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
-                      </a>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botones */}
+                <div className="flex flex-col gap-2">
+                  <label className="w-full">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf,.doc,.docx,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        handleCommentFileUpload(files);
+                        e.target.value = '';
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      type="button"
+                      onClick={(e) => {
+                        e.currentTarget.parentElement?.querySelector('input')?.click();
+                      }}
+                    >
+                      <Paperclip className="h-4 w-4 mr-2" />
+                      Adjuntar archivos
+                    </Button>
+                  </label>
+                  
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || addCommentMutation.isPending}
+                    size="sm"
+                    className="w-full"
+                  >
+                    {addCommentMutation.isPending ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Comentar
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
-            )}
-          </div>
-        ))
-      )}
-    </div>
-  </CardContent>
+
+              <Separator />
+
+              {/* Lista de comentarios */}
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                {actionPlan.comments.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium mb-1">No hay comentarios</p>
+                    <p className="text-sm">Sé el primero en comentar</p>
+                  </div>
+                ) : (
+                  actionPlan.comments.map((comment) => (
+                    <div key={comment.id} className="border-l-2 border-primary/30 pl-4 py-2 space-y-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-xs">
+                            {comment.authorName.split(' ').map(n => n[0]).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium">{comment.authorName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(comment.createdAt), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
+                        </span>
+                      </div>
+                      
+                      <p className="text-sm leading-relaxed">{comment.content}</p>
+                      
+                      {/* Archivos adjuntos */}
+                      {comment.attachments && comment.attachments.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-muted-foreground mb-2">
+                            Archivos adjuntos ({comment.attachments.length})
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {comment.attachments.map((attachment) => {
+                              const isImage = attachment.filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                              
+                              return (
+                                <a
+                                  key={attachment.id}
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group flex items-center gap-2 p-2 bg-muted/50 hover:bg-muted rounded-lg border hover:border-primary/50 transition-all"
+                                >
+                                  {isImage ? (
+                                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                                      <img 
+                                        src={attachment.url} 
+                                        alt={attachment.filename}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                      {getFileIcon(attachment.filename)}
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">
+                                      {attachment.filename}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Ver archivo
+                                    </p>
+                                  </div>
+                                  <Download className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
           </Card>
         </div>
       </div>
-{/* Modal de confirmación de eliminación - INDEPENDIENTE */}
-{showDeleteDialog && (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center">
-    {/* Backdrop oscuro */}
-    <div 
-      className="fixed inset-0 bg-black/50 animate-in fade-in"
-      onClick={() => !deletePlanMutation.isPending && setShowDeleteDialog(false)}
-    />
-    
-    {/* Modal de confirmación */}
-    <div className="relative z-[101] w-full max-w-lg mx-4 bg-white rounded-lg shadow-2xl animate-in zoom-in-95 duration-200">
-      {/* Header con color rojo */}
-      <div className="bg-red-600 text-white px-6 py-4 rounded-t-lg">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-white/20 rounded-full">
-            <Trash2 className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold">¿Eliminar plan de acción?</h3>
-            <p className="text-sm text-red-100 mt-1">Esta acción no se puede deshacer</p>
-          </div>
-        </div>
-      </div>
 
-      {/* Contenido */}
-      <div className="px-6 py-6 space-y-4 max-h-[70vh] overflow-y-auto">
-        {/* Información del plan a eliminar */}
-        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <FileText className="h-5 w-5 text-red-700" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-red-900 mb-2">
-                Plan de acción a eliminar:
-              </h4>
-              <div className="space-y-1.5 text-sm text-red-800">
-                <div className="flex">
-                  <span className="font-medium w-24">Título:</span>
-                  <span className="flex-1">{actionPlan.title}</span>
+      {/* Modal de confirmación de eliminación */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div 
+            className="fixed inset-0 bg-black/50 animate-in fade-in"
+            onClick={() => !deletePlanMutation.isPending && setShowDeleteDialog(false)}
+          />
+          
+          <div className="relative z-[101] w-full max-w-lg mx-4 bg-white rounded-lg shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="bg-red-600 text-white px-6 py-4 rounded-t-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-full">
+                  <Trash2 className="h-6 w-6" />
                 </div>
-                <div className="flex">
-                  <span className="font-medium w-24">Responsable:</span>
-                  <span className="flex-1">{actionPlan.responsible.name}</span>
-                </div>
-                <div className="flex">
-                  <span className="font-medium w-24">Estado:</span>
-                  <Badge className={getStatusColor(actionPlan.status)}>
-                    {getStatusText(actionPlan.status)}
-                  </Badge>
+                <div>
+                  <h3 className="text-xl font-bold">¿Eliminar plan de acción?</h3>
+                  <p className="text-sm text-red-100 mt-1">Esta acción no se puede deshacer</p>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Advertencia sobre datos que se eliminarán */}
-        <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <AlertTriangle className="h-5 w-5 text-yellow-700" />
-            </div>
-            <div className="flex-1">
-              <h5 className="font-semibold text-yellow-900 mb-3">
-                Se eliminarán permanentemente:
-              </h5>
-              <div className="space-y-2.5 text-sm text-yellow-800">
-                <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
-                  <CheckCircle2 className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                  <span className="font-medium">
-                    {actionPlan.tasks.length} {actionPlan.tasks.length === 1 ? 'tarea' : 'tareas'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
-                  <MessageSquare className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                  <span className="font-medium">
-                    {actionPlan.comments.length} {actionPlan.comments.length === 1 ? 'comentario' : 'comentarios'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
-                  <User className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                  <span className="font-medium">
-                    {actionPlan.participants.length} {actionPlan.participants.length === 1 ? 'participante' : 'participantes'}
-                  </span>
+            <div className="px-6 py-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg">
+                    <FileText className="h-5 w-5 text-red-700" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-red-900 mb-2">
+                      Plan de acción a eliminar:
+                    </h4>
+                    <div className="space-y-1.5 text-sm text-red-800">
+                      <div className="flex">
+                        <span className="font-medium w-24">Título:</span>
+                        <span className="flex-1">{actionPlan.title}</span>
+                      </div>
+                      <div className="flex">
+                        <span className="font-medium w-24">Responsable:</span>
+                        <span className="flex-1">{actionPlan.responsible.name}</span>
+                      </div>
+                      <div className="flex">
+                        <span className="font-medium w-24">Estado:</span>
+                        <Badge className={getStatusColor(actionPlan.status)}>
+                          {getStatusText(actionPlan.status)}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-yellow-100 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-yellow-700" />
+                  </div>
+                  <div className="flex-1">
+                    <h5 className="font-semibold text-yellow-900 mb-3">
+                      Se eliminarán permanentemente:
+                    </h5>
+                    <div className="space-y-2.5 text-sm text-yellow-800">
+                      <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
+                        <CheckCircle2 className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                        <span className="font-medium">
+                          {actionPlan.tasks.length} {actionPlan.tasks.length === 1 ? 'tarea' : 'tareas'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
+                        <MessageSquare className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                        <span className="font-medium">
+                          {actionPlan.comments.length} {actionPlan.comments.length === 1 ? 'comentario' : 'comentarios'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 p-2 bg-white/50 rounded">
+                        <User className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                        <span className="font-medium">
+                          {actionPlan.participants.length} {actionPlan.participants.length === 1 ? 'participante' : 'participantes'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="text-sm text-gray-700 text-center">
+                  <span className="font-semibold text-gray-900">⚠️ Advertencia:</span> Esta acción es{' '}
+                  <span className="font-bold text-red-600">permanente e irreversible</span>.
+                  Todos los datos relacionados se perderán.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg border-t flex items-center justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={deletePlanMutation.isPending}
+                className="min-w-[100px]"
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deletePlanMutation.mutate()}
+                disabled={deletePlanMutation.isPending}
+                className="min-w-[140px] bg-red-600 hover:bg-red-700"
+              >
+                {deletePlanMutation.isPending ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Sí, eliminar
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>
-
-        {/* Mensaje final de advertencia */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-gray-700 text-center">
-            <span className="font-semibold text-gray-900">⚠️ Advertencia:</span> Esta acción es{' '}
-            <span className="font-bold text-red-600">permanente e irreversible</span>.
-            Todos los datos relacionados con este plan se perderán para siempre.
-          </p>
-        </div>
-      </div>
-
-      {/* Botones de acción */}
-      <div className="px-6 py-4 bg-gray-50 rounded-b-lg border-t flex items-center justify-end gap-3">
-        <Button
-          variant="outline"
-          onClick={() => setShowDeleteDialog(false)}
-          disabled={deletePlanMutation.isPending}
-          className="min-w-[100px]"
-        >
-          Cancelar
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={() => deletePlanMutation.mutate()}
-          disabled={deletePlanMutation.isPending}
-          className="min-w-[140px] bg-red-600 hover:bg-red-700"
-        >
-          {deletePlanMutation.isPending ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-              Eliminando...
-            </>
-          ) : (
-            <>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Sí, eliminar
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
-  </div>
-)}
-
+      )}
     </DialogContent>
   </Dialog>
 );
