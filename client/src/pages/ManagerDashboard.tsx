@@ -60,6 +60,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLocation } from "wouter";
+
 
 interface Incident {
   id: string;
