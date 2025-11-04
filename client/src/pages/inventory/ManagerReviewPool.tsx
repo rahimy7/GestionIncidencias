@@ -155,7 +155,7 @@ export default function ManagerReviewPool() {
                           <Badge
                             variant={
                               item.adjustmentType === "positive"
-                                ? "success"
+                                ? "secondary"
                                 : item.adjustmentType === "negative"
                                 ? "destructive"
                                 : "outline"

@@ -170,7 +170,7 @@ export default function CountResults() {
                               <Badge
                                 variant={
                                   item.status === "counted"
-                                    ? "success"
+                                    ? "default"
                                     : item.status === "reviewing"
                                     ? "outline"
                                     : item.status === "approved"

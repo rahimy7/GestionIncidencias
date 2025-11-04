@@ -27,7 +27,17 @@ import { AdminDepartmentsManagement } from "./pages/admin/AdminDepartmentsManage
 import { CreateDepartment } from "./pages/admin/CreateDepartment";
 import { IncidentDetailPage } from "@/pages/IncidentDetailPage";
 import { EditDepartment } from "./pages/admin/EditDepartment";
-import {CreateInventoryRequest} from "./pages/inventory/CreateInventoryRequest"
+
+
+// Importar rutas de inventario
+import InventoryRequests from "./pages/inventory/InventoryRequests";
+import { CreateInventoryRequest } from "./pages/inventory/CreateInventoryRequest";
+import InventoryRequestDetail from "./pages/inventory/InventoryRequestDetail";
+import MyWorkPool from "./pages/inventory/MyWorkPool";
+import CountResults from "./pages/inventory/CountResults";
+import ManagerReviewPool from "./pages/inventory/ManagerReviewPool";
+import AuditorWorkPool from "./pages/inventory/AuditorWorkPool";
+import CoordinatorWorkPool from "./pages/inventory/CoordinatorWorkPool";
 
 function Router() {
   const { isAuthenticated, isLoading, user, error } = useAuth();
@@ -124,7 +134,14 @@ const DashboardComponent = getDashboardComponent();
           <Route path="/admin/settings" component={() => <div>Configuración Admin</div>} />
 
            {/* Configuración Inventario */}
-      <Route path="/inventoryrq" component={CreateInventoryRequest} />
+     <Route path="/inventory/requests" component={InventoryRequests} />
+              <Route path="/inventory/requests/new" component={CreateInventoryRequest} />
+              <Route path="/inventory/requests/:id" component={InventoryRequestDetail} />
+              <Route path="/inventory/my-work" component={MyWorkPool} />
+              <Route path="/inventory/count-results" component={CountResults} />
+              <Route path="/inventory/manager/review" component={ManagerReviewPool} />
+              <Route path="/inventory/auditor/work" component={AuditorWorkPool} />
+              <Route path="/inventory/coordinator/work" component={CoordinatorWorkPool} />
 
           {/* Ruta 404 */}
           <Route component={NotFound} />
