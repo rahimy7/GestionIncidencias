@@ -27,6 +27,7 @@ import { AdminDepartmentsManagement } from "./pages/admin/AdminDepartmentsManage
 import { CreateDepartment } from "./pages/admin/CreateDepartment";
 import { IncidentDetailPage } from "@/pages/IncidentDetailPage";
 import { EditDepartment } from "./pages/admin/EditDepartment";
+import {CreateInventoryRequest} from "./pages/inventory/CreateInventoryRequest"
 
 function Router() {
   const { isAuthenticated, isLoading, user, error } = useAuth();
@@ -121,6 +122,9 @@ const DashboardComponent = getDashboardComponent();
           
           {/* Configuración Admin */}
           <Route path="/admin/settings" component={() => <div>Configuración Admin</div>} />
+
+           {/* Configuración Inventario */}
+      <Route path="/inventoryrq" component={CreateInventoryRequest} />
 
           {/* Ruta 404 */}
           <Route component={NotFound} />

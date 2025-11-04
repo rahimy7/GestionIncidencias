@@ -8,7 +8,8 @@ import {
   pgEnum, 
   integer,
   jsonb,
-  index
+  index,
+  boolean
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -30,7 +31,10 @@ export const userRoleEnum = pgEnum("user_role", [
   "manager", 
   "department", 
   "supervisor", 
-  "admin"
+  "admin",
+  "inventory_auditor",      // NUEVO
+  "inventory_coordinator",  // NUEVO
+  "adjustment_approver"     // NUEVO
 ]);
 
 // Incident status enum
@@ -57,6 +61,63 @@ export const actionStatusEnum = pgEnum("action_status", [
   "en_proceso", 
   "completado",
   "retrasado"
+]);
+
+// Inventory enums
+export const inventoryRequestTypeEnum = pgEnum("inventory_request_type", [
+  "manual",
+  "automatic", 
+  "division",
+  "category",
+  "group"
+]);
+
+export const inventoryRequestStatusEnum = pgEnum("inventory_request_status", [
+  "draft",
+  "sent",
+  "in_progress",
+  "completed",
+  "cancelled"
+]);
+
+export const inventoryItemStatusEnum = pgEnum("inventory_item_status", [
+  "pending",
+  "assigned",
+  "counted",
+  "reviewing",
+  "approved",
+  "rejected",
+  "audited",
+  "sent_for_approval",
+  "adjustment_approved",
+  "adjustment_rejected",
+  "adjusted"
+]);
+
+export const inventoryAdjustmentTypeEnum = pgEnum("inventory_adjustment_type", [
+  "positive",
+  "negative",
+  "none"
+]);
+
+export const inventorySamplingTypeEnum = pgEnum("inventory_sampling_type", [
+  "random",
+  "manual",
+  "mixed"
+]);
+
+export const auditDocumentStatusEnum = pgEnum("audit_document_status", [
+  "draft",
+  "in_progress",
+  "completed",
+  "approved",
+  "rejected"
+]);
+
+export const approvalStatusEnum = pgEnum("approval_status", [
+  "pending",
+  "approved",
+  "rejected"
 ]);
 
 // Users table
@@ -261,6 +322,259 @@ export const incidentComments = pgTable("incident_comments", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Solicitudes de inventario
+export const inventoryRequests = pgTable("inventory_requests", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestNumber: varchar("request_number", { length: 50 }).unique().notNull(),
+  requestType: inventoryRequestTypeEnum("request_type").notNull(),
+  status: inventoryRequestStatusEnum("status").default("draft").notNull(),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  
+  // Filtros
+  filterDivisions: text("filter_divisions").array(),
+  filterCategories: text("filter_categories").array(),
+  filterGroups: text("filter_groups").array(),
+  filterSpecificCodes: text("filter_specific_codes").array(),
+  
+  // Centros incluidos
+  centers: uuid("centers").array().notNull(),
+  
+  // Metadata
+  comments: text("comments"),
+  attachmentFiles: text("attachment_files").array(),
+  
+  // Auditoría
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+});
+
+// Items a contar
+export const inventoryCountItems = pgTable("inventory_count_items", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: uuid("request_id").references(() => inventoryRequests.id, { onDelete: "cascade" }).notNull(),
+  centerId: uuid("center_id").references(() => centers.id).notNull(),
+  
+  // Datos del producto (desde SQL Server)
+  itemCode: varchar("item_code", { length: 50 }).notNull(),
+  itemDescription: varchar("item_description", { length: 200 }),
+  itemDescription2: varchar("item_description2", { length: 200 }),
+  divisionCode: varchar("division_code", { length: 20 }),
+  divisionName: varchar("division_name", { length: 100 }),
+  categoryCode: varchar("category_code", { length: 20 }),
+  categoryName: varchar("category_name", { length: 100 }),
+  groupCode: varchar("group_code", { length: 20 }),
+  groupName: varchar("group_name", { length: 100 }),
+  subgroupCode: varchar("subgroup_code", { length: 20 }),
+  subgroupName: varchar("subgroup_name", { length: 100 }),
+  brandCode: varchar("brand_code", { length: 20 }),
+  brandName: varchar("brand_name", { length: 100 }),
+  
+  // Inventario de sistema
+  systemInventory: integer("system_inventory").notNull().default(0),
+  unitMeasureCode: varchar("unit_measure_code", { length: 10 }),
+  unitCost: integer("unit_cost").notNull().default(0), // Usar integer para decimales (cents)
+  
+  // Datos del conteo
+  physicalCount: integer("physical_count"),
+  difference: integer("difference"),
+  adjustmentType: inventoryAdjustmentTypeEnum("adjustment_type"),
+  costImpact: integer("cost_impact"), // En cents
+  
+  // Estado y asignación
+  status: inventoryItemStatusEnum("status").default("pending").notNull(),
+  assignedTo: varchar("assigned_to").references(() => users.id),
+  assignedAt: timestamp("assigned_at"),
+  
+  // Fechas de transición
+  countedAt: timestamp("counted_at"),
+  countedBy: varchar("counted_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  auditedAt: timestamp("audited_at"),
+  auditedBy: varchar("audited_by").references(() => users.id),
+  adjustedAt: timestamp("adjusted_at"),
+  adjustedBy: varchar("adjusted_by").references(() => users.id),
+  
+  // Comentarios por línea
+  counterComment: text("counter_comment"),
+  managerComment: text("manager_comment"),
+  auditorComment: text("auditor_comment"),
+  coordinatorComment: text("coordinator_comment"),
+  
+  // Auditoría
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Documentos de auditoría
+export const inventoryAuditDocuments = pgTable("inventory_audit_documents", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentNumber: varchar("document_number", { length: 50 }).unique().notNull(),
+  auditorId: varchar("auditor_id").references(() => users.id).notNull(),
+  centerId: uuid("center_id").references(() => centers.id).notNull(),
+  
+  // Configuración del muestreo
+  samplingType: inventorySamplingTypeEnum("sampling_type").notNull(),
+  samplingPercentage: integer("sampling_percentage"), // 0-100
+  totalItems: integer("total_items").notNull(),
+  sampledItems: integer("sampled_items").notNull(),
+  
+  // Estado
+  status: auditDocumentStatusEnum("status").default("draft").notNull(),
+  
+  // Fechas
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  
+  // Resultado
+  approvalResult: varchar("approval_result", { length: 20 }),
+  resultComments: text("result_comments"),
+});
+
+// Muestras de auditoría
+export const inventoryAuditSamples = pgTable("inventory_audit_samples", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  auditDocumentId: uuid("audit_document_id").references(() => inventoryAuditDocuments.id, { onDelete: "cascade" }).notNull(),
+  countItemId: uuid("count_item_id").references(() => inventoryCountItems.id).notNull(),
+  
+  // Resultado del muestreo
+  auditPhysicalCount: integer("audit_physical_count"),
+  auditDifference: integer("audit_difference"),
+  matchesOriginal: integer("matches_original"), // 0=false, 1=true, null=not_checked
+  
+  // Aprobación
+ approved: boolean("approved").default(sql`false`).notNull(),
+  rejectionReason: text("rejection_reason"),
+  
+  // Auditoría
+  auditedAt: timestamp("audited_at").defaultNow(),
+  auditedBy: varchar("audited_by").references(() => users.id).notNull(),
+});
+
+// Aprobaciones de ajustes
+export const inventoryAdjustmentApprovals = pgTable("inventory_adjustment_approvals", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: uuid("request_id").references(() => inventoryRequests.id).notNull(),
+  divisionCode: varchar("division_code", { length: 20 }).notNull(),
+  
+  // Aprobadores configurados
+  approvers: varchar("approvers").array().notNull(), // Array de user IDs
+  
+  // Estado
+  approvalStatus: approvalStatusEnum("approval_status").default("pending").notNull(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  
+  // Auditoría
+  createdAt: timestamp("created_at").defaultNow(),
+  notificationSentAt: timestamp("notification_sent_at"),
+});
+
+// Historial de inventario
+export const inventoryHistory = pgTable("inventory_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: varchar("entity_type", { length: 50 }).notNull(),
+  entityId: varchar("entity_id").notNull(),
+  action: varchar("action", { length: 100 }).notNull(),
+  description: text("description"),
+  oldValue: jsonb("old_value"),
+  newValue: jsonb("new_value"),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Asignaciones automáticas de usuarios
+export const inventoryUserAssignments = pgTable("inventory_user_assignments", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  centerId: uuid("center_id").references(() => centers.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  
+  // Criterios de asignación
+  assignmentType: varchar("assignment_type", { length: 20 }).notNull(), // division, category, group
+  assignmentValues: text("assignment_values").array().notNull(),
+  
+  // Estado
+  isActive: integer("is_active").default(1).notNull(), // 1=true, 0=false
+  
+  // Auditoría
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+
+// ============================================================================
+// RELACIONES DE INVENTARIO
+// ============================================================================
+
+export const inventoryRequestsRelations = relations(inventoryRequests, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [inventoryRequests.createdBy],
+    references: [users.id],
+  }),
+  items: many(inventoryCountItems),
+  approvals: many(inventoryAdjustmentApprovals),
+}));
+
+export const inventoryCountItemsRelations = relations(inventoryCountItems, ({ one }) => ({
+  request: one(inventoryRequests, {
+    fields: [inventoryCountItems.requestId],
+    references: [inventoryRequests.id],
+  }),
+  center: one(centers, {
+    fields: [inventoryCountItems.centerId],
+    references: [centers.id],
+  }),
+  assignedUser: one(users, {
+    fields: [inventoryCountItems.assignedTo],
+    references: [users.id],
+  }),
+  countedByUser: one(users, {
+    fields: [inventoryCountItems.countedBy],
+    references: [users.id],
+  }),
+  approvedByUser: one(users, {
+    fields: [inventoryCountItems.approvedBy],
+    references: [users.id],
+  }),
+  auditedByUser: one(users, {
+    fields: [inventoryCountItems.auditedBy],
+    references: [users.id],
+  }),
+}));
+
+export const inventoryAuditDocumentsRelations = relations(inventoryAuditDocuments, ({ one, many }) => ({
+  auditor: one(users, {
+    fields: [inventoryAuditDocuments.auditorId],
+    references: [users.id],
+  }),
+  center: one(centers, {
+    fields: [inventoryAuditDocuments.centerId],
+    references: [centers.id],
+  }),
+  samples: many(inventoryAuditSamples),
+}));
+
+export const inventoryAuditSamplesRelations = relations(inventoryAuditSamples, ({ one }) => ({
+  auditDocument: one(inventoryAuditDocuments, {
+    fields: [inventoryAuditSamples.auditDocumentId],
+    references: [inventoryAuditDocuments.id],
+  }),
+  countItem: one(inventoryCountItems, {
+    fields: [inventoryAuditSamples.countItemId],
+    references: [inventoryCountItems.id],
+  }),
+  auditor: one(users, {
+    fields: [inventoryAuditSamples.auditedBy],
+    references: [users.id],
+  }),
+}));
 
 // Relaciones para la tabla de comentarios
 export const incidentCommentsRelations = relations(incidentComments, ({ one }) => ({
@@ -581,6 +895,33 @@ export const upsertUserSchema = createInsertSchema(users).pick({
 
 export const updateUserSchema = upsertUserSchema.partial().omit({ id: true });
 
+export const insertInventoryRequestSchema = createInsertSchema(inventoryRequests).omit({
+  id: true,
+  requestNumber: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+  completedAt: true,
+});
+
+export const insertInventoryCountItemSchema = createInsertSchema(inventoryCountItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInventoryAuditDocumentSchema = createInsertSchema(inventoryAuditDocuments).omit({
+  id: true,
+  documentNumber: true,
+  createdAt: true,
+});
+
+export const insertInventoryAuditSampleSchema = createInsertSchema(inventoryAuditSamples).omit({
+  id: true,
+  auditedAt: true,
+});
+
+
 // Types
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -604,6 +945,40 @@ export type UpdateDepartment = Partial<CreateDepartment>;
 export type UpdateUser = Partial<CreateUser>;
 export type CreateCenter = typeof centers.$inferInsert;
 export type UpdateCenter = Partial<CreateCenter>;
+export type InventoryRequest = typeof inventoryRequests.$inferSelect;
+export type InsertInventoryRequest = z.infer<typeof insertInventoryRequestSchema>;
+
+export type InventoryCountItem = typeof inventoryCountItems.$inferSelect;
+export type InsertInventoryCountItem = z.infer<typeof insertInventoryCountItemSchema>;
+
+export type InventoryAuditDocument = typeof inventoryAuditDocuments.$inferSelect;
+export type InsertInventoryAuditDocument = z.infer<typeof insertInventoryAuditDocumentSchema>;
+
+export type InventoryAuditSample = typeof inventoryAuditSamples.$inferSelect;
+export type InsertInventoryAuditSample = z.infer<typeof insertInventoryAuditSampleSchema>;
+
+export type InventoryAdjustmentApproval = typeof inventoryAdjustmentApprovals.$inferSelect;
+export type InsertInventoryAdjustmentApproval = typeof inventoryAdjustmentApprovals.$inferInsert;
+
+export type InventoryHistory = typeof inventoryHistory.$inferSelect;
+export type InsertInventoryHistory = typeof inventoryHistory.$inferInsert;
+
+export type InventoryUserAssignment = typeof inventoryUserAssignments.$inferSelect;
+export type InsertInventoryUserAssignment = typeof inventoryUserAssignments.$inferInsert;
+
+// Tipos extendidos con relaciones
+export type InventoryRequestWithDetails = InventoryRequest & {
+  creator: User;
+  items: InventoryCountItem[];
+};
+
+export type InventoryCountItemWithDetails = InventoryCountItem & {
+  request: InventoryRequest;
+  center: Center;
+  assignedUser?: User;
+  countedByUser?: User;
+  approvedByUser?: User;
+};
 
 // Extended types with relations
 export type IncidentWithDetails = Incident & {

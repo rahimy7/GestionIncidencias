@@ -5,6 +5,9 @@ import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import os from 'os';
+import inventoryExtendedRoutes from './routes/inventory-extended';
+import { testConnection } from './sqlServerConnection';
+import inventoryRoutes from "./routes/inventoryRoutes";
 
 
 const app = express();
@@ -51,6 +54,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.use('/api/inventory', inventoryExtendedRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // Add response compression and timing
 
@@ -123,4 +129,10 @@ server.listen(port, host, () => {
     }
   });
 })();
+
+testConnection().then((success: any) => {
+  if (!success) {
+    console.warn('⚠️ SQL Server connection failed - inventory features may not work');
+  }
+});
 
